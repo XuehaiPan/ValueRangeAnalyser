@@ -394,6 +394,9 @@ class Block(object):
                     GEN.add(constraint['res'])
                 except KeyError:
                     pass
+            matcher: Match = re.search('return\s*(?P<ret>\w+)\s*;', string = self.code)
+            if matcher is not None:
+                self.__USE.add(matcher.group('ret'))
             self.__USE.intersection_update(self.IN)
         return self.__USE
     
@@ -662,7 +665,7 @@ class RangeAnalyser(object):
                                 continue
                             traveledBlocks.add(successor)
                             for arg in constraint['args']:
-                                if arg in func.varFromArg or number.fullmatch(string = arg) is not None:
+                                if number.fullmatch(string = arg) is not None:
                                     continue
                                 else:
                                     if arg in successor.USE:
@@ -715,7 +718,7 @@ class RangeAnalyser(object):
 if __name__ == '__main__':
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        i = 9
+        # i = 9
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
