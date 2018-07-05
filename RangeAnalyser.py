@@ -235,7 +235,7 @@ class Function(object):
         return self.__dataFlow
     
     @property
-    def constraints(self) -> Dict[str, Dict[str, List[str]]]:
+    def constraints(self) -> Dict[str, Dict[str, Union[str, List[str]]]]:
         if self.__constraints is None:
             self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = dict()
             for block in self.blocks.values():
@@ -315,6 +315,11 @@ class Function(object):
     @staticmethod
     def parseVariableAssignmentStartWith(id: str, statement: str) -> Set[str]:
         return set(map(lambda m: m.group('id'), re.finditer(r'(?P<id>' + id + r'(_\d+)?)\s*=[^=]', string = statement)))
+    
+    def __str__(self) -> str:
+        return self.declaration
+    
+    __repr__ = __str__
 
 
 class Block(object):
@@ -380,18 +385,13 @@ class Block(object):
     def USE(self) -> Set[str]:
         if self.__USE is None:
             self.__USE: Set[str] = set()
+            GEN: Set[str] = set()
             for constraint in self.constraints.values():
+                for arg in constraint['args']:
+                    if variable.fullmatch(string = arg) and arg not in GEN:
+                        self.__USE.add(arg)
                 try:
-                    if variable.fullmatch(string = constraint['arg1']):
-                        self.__USE.add(constraint['arg1'])
-                    if variable.fullmatch(string = constraint['arg2']):
-                        self.__USE.add(constraint['arg2'])
-                except KeyError:
-                    pass
-                try:
-                    for arg in constraint['args']:
-                        if variable.fullmatch(string = arg):
-                            self.__USE.add(arg)
+                    GEN.add(constraint['res'])
                 except KeyError:
                     pass
             self.__USE.intersection_update(self.IN)
@@ -442,7 +442,7 @@ class Block(object):
                     if factor.fullmatch(string = expr) is not None:
                         stmt: str = '{} = {}'.format(res, expr)
                         constraints[stmt] = {'stmt': stmt,
-                                             'type': 'assign',
+                                             'type': 'assignment',
                                              'op': 'assign',
                                              'res': res,
                                              'arg1': expr,
@@ -514,11 +514,10 @@ class Block(object):
     def predecessors(self) -> Set[Block]:
         return self.function.predecessorsOf(block = self)
     
-    # def __str__(self) -> str:
-    #     return str(self.codeSplit)
+    def __str__(self) -> str:
+        return self.label
     
-    # def __repr__(self) -> str:
-    #     return repr(self.codeSplit)
+    __repr__ = __str__
 
 
 class RangeAnalyser(object):
@@ -536,7 +535,7 @@ class RangeAnalyser(object):
             index = id_n.rfind('_')
             return id_n[:index], int(id_n[index + 1:])
         
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, compound = True, layout = 'dot')
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             namespace: str = '{}::{{}}'.format(func.name)
@@ -579,7 +578,7 @@ class RangeAnalyser(object):
         return graph
     
     def drawSimpleControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, compound = True, layout = 'dot')
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             for prefix in ('', 'dominant::'):
@@ -615,7 +614,7 @@ class RangeAnalyser(object):
         return graph
     
     def drawConstraintGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, compound = True, layout = 'dot')
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, overlap = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             namespace: str = '{}::{{}}'.format(func.name)
@@ -627,7 +626,7 @@ class RangeAnalyser(object):
                         nbunch.append(namespace.format(constraint['res']))
                     except KeyError:
                         pass
-                    if constraint['type'] == 'assign':
+                    if constraint['type'] == 'assignment':
                         arg: str = constraint['arg1']
                         if number.fullmatch(string = arg):
                             graph.add_node(namespace.format('{}::{}'.format(block.label, arg)), label = arg)
@@ -637,23 +636,13 @@ class RangeAnalyser(object):
                     else:
                         nbunch.append(namespace.format(stmt))
                         if constraint['type'] == 'condition':
-                            for arg in constraint['args']:
-                                pass
-                            
                             graph.add_node(namespace.format(stmt), label = stmt, style = 'bold', color = 'orange')
-                            graph.add_node(namespace.format('({})::true'.format(stmt)), style = 'bold', color = 'purple')
-                            graph.add_node(namespace.format('({})::false'.format(stmt)), style = 'bold', color = 'purple')
-                            graph.add_edge(namespace.format(stmt), namespace.format('({})::true'.format(stmt)),
-                                           label = 'T', fontname = 'Menlo bold', fontcolor = 'brown')
-                            graph.add_edge(namespace.format(stmt), namespace.format('({})::false'.format(stmt)),
-                                           label = 'F', fontname = 'Menlo bold', fontcolor = 'brown')
-                            nbunch.extend([namespace.format('({})::true'.format(stmt)), namespace.format('({})::false'.format(stmt))])
                         else:
                             color: str = 'crimson'
                             if constraint['type'] == 'funcCall':
                                 color: str = 'red'
                             elif constraint['op'] == 'PHI':
-                                color: str = 'deeppink'
+                                color: str = 'purple'
                             graph.add_node(namespace.format(stmt), label = constraint['op'], style = 'bold', color = color)
                             graph.add_edge(namespace.format(stmt), namespace.format(constraint['res']))
                         for arg in constraint['args']:
@@ -662,6 +651,49 @@ class RangeAnalyser(object):
                                 arg: str = '{}::{}'.format(block.label, arg)
                                 nbunch.append(namespace.format(arg))
                             graph.add_edge(namespace.format(arg), namespace.format(stmt))
+            for stmt, constraint in func.constraints.items():
+                if constraint['type'] == 'condition':
+                    for flag in ('true', 'false'):
+                        traveledBlocks: Set[Block] = set()
+                        successors: Set[Block] = {func.blocks[constraint[flag]]}
+                        while len(successors) > 0:
+                            successor: Block = successors.pop()
+                            if successor in traveledBlocks:
+                                continue
+                            traveledBlocks.add(successor)
+                            for arg in constraint['args']:
+                                if arg in func.varFromArg or number.fullmatch(string = arg) is not None:
+                                    continue
+                                else:
+                                    if arg in successor.USE:
+                                        for cons in successor.constraints.values():
+                                            if cons['stmt'] != stmt and arg in cons['args']:
+                                                node: str = cons['stmt']
+                                                if cons['type'] == 'assignment':
+                                                    node: str = cons['res']
+                                                try:
+                                                    graph.remove_edge(namespace.format(arg), namespace.format(node))
+                                                except KeyError:
+                                                    pass
+                                                newNode: str = namespace.format('({})::{}'.format(cons['stmt'], arg))
+                                                try:
+                                                    graph.get_node(newNode)
+                                                    while True:
+                                                        try:
+                                                            graph.remove_edge(newNode, namespace.format(node))
+                                                        except KeyError:
+                                                            break
+                                                except KeyError:
+                                                    graph.add_node(newNode, label = None, shape = 'point', width = 0.0)
+                                                    graph.add_edge(namespace.format(stmt), newNode, label = flag[0].upper(),
+                                                                   dir = 'none', style = 'dashed',
+                                                                   fontname = 'Menlo bold', fontcolor = 'deeppink')
+                                                    graph.add_edge(namespace.format(arg), newNode, dir = 'none')
+                                                    nbunch.append(newNode)
+                                                for i in range(cons['args'].count(arg)):
+                                                    graph.add_edge(newNode, namespace.format(node))
+                                    if arg not in successor.KILL:
+                                        successors.update(successor.successors)
             if func.ret is not None:
                 graph.add_node(namespace.format(func.ret), label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
                 nbunch.append(namespace.format(func.ret))
@@ -683,7 +715,7 @@ class RangeAnalyser(object):
 if __name__ == '__main__':
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        # i = 7
+        i = 9
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
