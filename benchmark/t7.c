@@ -20,4 +20,3 @@ int foo(int i)
 	int k = bar(j);
 	return k;
 }
-

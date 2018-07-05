@@ -33,6 +33,7 @@ numPattern: str = r'(?P<number>[+\-]?\d+(\.\d+)?([Ee][+\-]?\d+)?)'
 varPattern: str = r'(?P<id>\w*)_(?P<num>\d+)'
 factorPattern: str = r'(\w*_\d+)|([+\-]?\d+(\.\d+)?([Ee][+\-]?\d+)?)'
 number: Pattern = re.compile(r'^\s*{}\s*$'.format(numPattern))
+integer: Pattern = re.compile(r'^\s*(?P<integer>[+\-]?\d+)\s*$')
 variable: Pattern = re.compile(r'^\s*{}\s*$'.format(varPattern))
 factor: Pattern = re.compile(r'^\s*{}\s*$'.format(factorPattern))
 
@@ -56,14 +57,15 @@ del varPattern, numPattern, factorPattern, var1Pattern, var2Pattern, num1Pattern
 
 
 def formatCode(statements: List[str]) -> List[str]:
-    def doPreprocessing(stmt: str):
+    def doPreprocessing(stmt: str) -> str:
         stmt: str = re.sub(r'\s+', repl = ' ', string = stmt)
         stmt: str = re.sub(r'\s*;', repl = ';', string = stmt)
         stmt: str = re.sub(r';;.*$', repl = '', string = stmt)
         stmt: str = re.sub(r'(int|float)\s+D\.\d*\s*;', repl = '', string = stmt)
         stmt: str = re.sub(r'(?P<number>[+\-]?\d+(\.\d+)?([Ee][+\-]?\d+))', repl = lambda m: m.group('number').upper(), string = stmt)
-        stmt: str = stmt.strip()
-        return stmt
+        stmt: str = re.sub(r'^\s*goto\s+(?P<label1><[\w\s]+>)\s*\((?P<label2><[\w\s]+>)\)\s*;\s*$',
+                           repl = lambda m: 'goto {};'.format(m.group('label2')), string = stmt)
+        return stmt.strip()
     
     statements = list(filter(None, map(doPreprocessing, statements)))
     for i, stmt in enumerate(statements):
@@ -643,7 +645,7 @@ class RangeAnalyser(object):
                         else:
                             color: str = 'crimson'
                             if constraint['type'] == 'funcCall':
-                                color: str = 'red'
+                                color: str = 'brown'
                             elif constraint['op'] == 'PHI':
                                 color: str = 'purple'
                             graph.add_node(namespace.format(stmt), label = constraint['op'], style = 'bold', color = color)

@@ -35,4 +35,3 @@ float foo(int a, int b)
 	
 	return ret;
 }
-

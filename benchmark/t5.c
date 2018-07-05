@@ -17,4 +17,3 @@ int foo()
 	}
 	return ret;
 }
-

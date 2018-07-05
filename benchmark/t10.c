@@ -23,4 +23,3 @@ int foo(int a, int b)
 	
 	return j - i;
 }
-

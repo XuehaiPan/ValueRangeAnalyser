@@ -20,4 +20,3 @@ int foo(int argc)
 	}
 	return sum;
 }
-

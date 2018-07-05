@@ -24,4 +24,3 @@ int foo(int k, int N)
 	}
 	return k;
 }
-

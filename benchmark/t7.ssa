@@ -16,7 +16,7 @@ bar (int i)
 
   <bb 3>:
   _3 = i_2(D) + 10;
-  goto <L2>;
+  goto <bb 5> (<L2>);
 
   <bb 4>:
   _4 = 5 - i_2(D);
