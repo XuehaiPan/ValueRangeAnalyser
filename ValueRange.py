@@ -94,20 +94,29 @@ class BasicValueRange(object):
     def isSuperset(self, other: BasicValueRange) -> bool:
         return other.isSubset(other = self)
     
-    def toDtype(self, dtype: Union[Type[int], Type[float]]) -> BasicValueRange:
+    def asDtype(self, dtype: Union[Type[int], Type[float]]) -> BasicValueRange:
         return BasicValueRange(lower = self.lower, upper = self.upper, dtype = dtype)
     
-    def toInt(self) -> BasicValueRange:
-        return self.toDtype(dtype = int)
+    def asInt(self) -> BasicValueRange:
+        return self.asDtype(dtype = int)
     
-    def toFloat(self) -> BasicValueRange:
-        return self.toDtype(dtype = float)
+    def asFloat(self) -> BasicValueRange:
+        return self.asDtype(dtype = float)
     
     def __len__(self) -> Union[int, float]:
         if self.isEmptySet():
             return 0
         else:
             return self.upper - self.lower
+    
+    def __bool__(self) -> bool:
+        return self.isEmptySet()
+    
+    def __eq__(self, other: BasicValueRange) -> bool:
+        return self.isSubset(other = other) and other.isSubset(other = self)
+    
+    def __ne__(self, other: BasicValueRange) -> bool:
+        return not self.__eq__(other = other)
     
     def __contains__(self, value: Union[int, float]) -> bool:
         try:
@@ -168,7 +177,7 @@ class ValueRange(object):
         except ValueError:
             self.__lower, self.__upper = None, None
         if dtype == float:
-            self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.toFloat, valueRanges))
+            self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.asFloat, valueRanges))
         else:
             self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.copy, valueRanges))
         self.reduce()
@@ -195,7 +204,7 @@ class ValueRange(object):
     
     def reduce(self) -> None:
         if not self.isEmptySet():
-            self.__valueRanges: List[BasicValueRange] = list(valueRange.toDtype(dtype = self.dtype) for valueRange in self.valueRanges)
+            self.__valueRanges: List[BasicValueRange] = list(valueRange.asDtype(dtype = self.dtype) for valueRange in self.valueRanges)
             self.valueRanges.sort(key = lambda valueRange: valueRange.lower)
             valueRanges: List[BasicValueRange] = [self.valueRanges[0]]
             for valueRange in self.valueRanges[1:]:
@@ -228,7 +237,7 @@ class ValueRange(object):
             self.valueRanges.append(subset)
             if subset.dtype == float and self.dtype == int:
                 self.__dtype: Type[float] = float
-                self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.toFloat, self.valueRanges))
+                self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.asFloat, self.valueRanges))
             self.reduce()
     
     def isOverlapping(self, other: ValueRange) -> bool:
@@ -251,7 +260,7 @@ class ValueRange(object):
         dtype: Type[float] = float
         if self.dtype == int and other.dtype == int:
             dtype: Type[int] = int
-        valueRanges: List[BasicValueRange] = list(valueRange.toDtype(dtype = dtype) for valueRange in self.valueRanges)
+        valueRanges: List[BasicValueRange] = list(valueRange.asDtype(dtype = dtype) for valueRange in self.valueRanges)
         for valueRange in valueRanges:
             if any(map(valueRange.isSubset, other.valueRanges)):
                 continue
@@ -293,19 +302,14 @@ class ValueRange(object):
             self.valueRanges.extend(other.valueRanges)
             if other.dtype == float and self.dtype == int:
                 self.__dtype: Type[float] = float
-                self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.toFloat, self.valueRanges))
+                self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.asFloat, self.valueRanges))
             self.reduce()
     
+    def asDtype(self, dtype: Union[Type[int], Type[float]]) -> ValueRange:
+        return ValueRange(valueRanges = list(map(lambda valueRange: valueRange.asDtype(dtype = dtype), self.valueRanges)))
+    
     def __iadd__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> None:
-        if not isinstance(other, ValueRange):
-            if isinstance(other, BasicValueRange):
-                other: ValueRange = ValueRange(valueRange = other)
-            if isinstance(other, int):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = int)
-            elif isinstance(other, float):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = float)
-            else:
-                raise ValueError
+        other: ValueRange = ValueRange.asValueRange(value = other)
         sumValueRanges: List[BasicValueRange] = list()
         dtype: Type[float] = float
         if self.dtype == int and other.dtype == int:
@@ -331,15 +335,7 @@ class ValueRange(object):
         return self + (-other)
     
     def __imul__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> None:
-        if not isinstance(other, ValueRange):
-            if isinstance(other, BasicValueRange):
-                other: ValueRange = ValueRange(valueRange = other)
-            if isinstance(other, int):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = int)
-            elif isinstance(other, float):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = float)
-            else:
-                raise ValueError
+        other: ValueRange = ValueRange.asValueRange(value = other)
         prodValueRanges: List[BasicValueRange] = list()
         dtype: Type[float] = float
         if self.dtype == int and other.dtype == int:
@@ -361,15 +357,7 @@ class ValueRange(object):
         return res
     
     def __itruediv__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> None:
-        if not isinstance(other, ValueRange):
-            if isinstance(other, BasicValueRange):
-                other: ValueRange = ValueRange(valueRange = other)
-            if isinstance(other, int):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = int)
-            elif isinstance(other, float):
-                other: ValueRange = ValueRange(lower = other, upper = other, dtype = float)
-            else:
-                raise ValueError
+        other: ValueRange = ValueRange.asValueRange(value = other)
         dtype: Type[float] = float
         if self.dtype == int and other.dtype == int:
             other: ValueRange = other.difference(other = ValueRange(lower = 0, upper = 0, dtype = int))
@@ -412,6 +400,16 @@ class ValueRange(object):
             valueRange.bound = (-valueRange.upper, -valueRange.lower)
         return res
     
+    def __bool__(self) -> bool:
+        return self.isEmptySet()
+    
+    def __eq__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> bool:
+        other: ValueRange = ValueRange.asValueRange(value = other)
+        return self.isSubset(other = other) and other.isSubset(other = self)
+    
+    def __ne__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> bool:
+        return not self.__eq__(other = other)
+    
     def __contains__(self, value: Union[int, float]) -> bool:
         return any(value in valueRange for valueRange in self.valueRanges)
     
@@ -420,6 +418,20 @@ class ValueRange(object):
             return 'EmptySet'
         else:
             return ' U '.join(map(str, self.valueRanges))
+    
+    @staticmethod
+    def asValueRange(value: Union[int, float, BasicValueRange, ValueRange]) -> ValueRange:
+        if not isinstance(value, ValueRange):
+            if isinstance(value, BasicValueRange):
+                return ValueRange(valueRange = value)
+            if isinstance(value, int):
+                return ValueRange(lower = value, upper = value, dtype = int)
+            elif isinstance(value, float):
+                return ValueRange(lower = value, upper = value, dtype = float)
+            else:
+                raise ValueError
+        else:
+            return value
     
     __repr__ = __str__
 

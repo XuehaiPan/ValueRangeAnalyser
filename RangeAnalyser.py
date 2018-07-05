@@ -3,7 +3,7 @@ import os
 from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
 from collections import OrderedDict
 import pygraphviz as pgv
-from ValueRange import ValueRange
+from ValueRange import ValueRange, EmptySet, IntegerNumberSet, RealNumberSet
 
 
 keywords: Set[str] = {'int', 'float', 'if', 'else', 'goto'}
@@ -70,7 +70,7 @@ def formatCode(statements: List[str]) -> List[str]:
     statements = list(filter(None, map(doPreprocessing, statements)))
     for i, stmt in enumerate(statements):
         if stmt.startswith('if') or stmt.startswith('else'):
-            statements[i + 1] = '\t' + statements[i + 1]
+            statements[i + 1] = '\t{}'.format(statements[i + 1])
     return statements
 
 
@@ -103,7 +103,7 @@ class Function(object):
             self.__body: str = matcher.group('body').strip()
             self.__bodySplit: List[str] = self.body.splitlines()
             self.__name: str = matcher.group('name').strip()
-            self.__args: Dict[str, str] = Function.parseVariableDeclaration(statement = matcher.group('args') + ',')
+            self.__args: Dict[str, str] = Function.parseVariableDeclaration(statement = '{},'.format(matcher.group('args')))
             try:
                 self.__ret: str = re.search('return\s+(?P<ret>\w+)\s*;', string = self.body).group('ret')
             except AttributeError:
@@ -316,7 +316,7 @@ class Function(object):
     
     @staticmethod
     def parseVariableAssignmentStartWith(id: str, statement: str) -> Set[str]:
-        return set(map(lambda m: m.group('id'), re.finditer(r'(?P<id>' + id + r'(_\d+)?)\s*=[^=]', string = statement)))
+        return set(map(lambda m: m.group('id'), re.finditer(r'(?P<id>{}(_\d+)?)\s*=[^=]'.format(id), string = statement)))
     
     def __str__(self) -> str:
         return self.declaration
@@ -535,6 +535,18 @@ class RangeAnalyser(object):
     def functions(self) -> Dict[str, Function]:
         return self.__functions
     
+    def analyse(self, func: Union[str, Function], args: Dict[str, ValueRange] = None) -> ValueRange:
+        if isinstance(func, Function):
+            func: str = func.name
+        func: Function = self.functions[func]
+        valueRanges: Dict[str, ValueRange] = {var: EmptySet for var in func.GEN}
+        for arg in func.args.keys():
+            for var in func.varFromArg:
+                if var.startswith(arg):
+                    valueRanges[var] = args[arg].asDtype(dtype = (int if func.args[arg] == 'int' else float))
+        print(valueRanges)
+        # return valueRanges[func.ret]
+    
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
         def idCompareKey(id_n: str) -> Tuple[str, int]:
             index = id_n.rfind('_')
@@ -733,8 +745,7 @@ if __name__ == '__main__':
             print('control flow graph:', func.controlFlow)
             print('data flow:', func.dataFlow)
             print('constraints:', func.constraints)
-            func.dominantBlockLabelsOf(block = '<entry>')
-            func.dominantBlockLabelsBy(block = '<entry>')
+            analyser.analyse(func = func, args = {arg: EmptySet for arg in func.args.keys()})
             print()
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
