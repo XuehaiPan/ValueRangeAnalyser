@@ -108,6 +108,7 @@ class Function(object):
                 self.__ret: str = None
             self.__declaration: str = '{}({})'.format(self.name, ', '.join('{} {}'.format(type, id)
                                                                            for id, type in self.args.items()))
+            self.__prototype: str = '{}({})'.format(self.name, ', '.join(self.args.values()))
             self.__variables: Dict[str, str] = Function.parseVariableDeclaration(statement = code)
             self.__localVariables: Dict[str, str] = Function.parseVariableDeclaration(statement = self.body)
             self.__GEN: Set[str] = Function.parseVariableAssignment(statement = self.body)
@@ -143,6 +144,14 @@ class Function(object):
         return self.__name
     
     @property
+    def declaration(self) -> str:
+        return self.__declaration
+    
+    @property
+    def prototype(self) -> str:
+        return self.__prototype
+    
+    @property
     def args(self) -> Dict[str, str]:
         return self.__args
     
@@ -153,10 +162,6 @@ class Function(object):
     @property
     def varFromArg(self) -> Set[str]:
         return self.__varFromArg
-    
-    @property
-    def declaration(self) -> str:
-        return self.__declaration
     
     @property
     def variables(self) -> Dict[str, str]:
@@ -296,116 +301,6 @@ class Function(object):
             block: str = block.label
         return self.dataFlow[block]['OUT']
     
-    def drawControlFlowGraph(self, graph: pgv.AGraph) -> pgv.AGraph:
-        def idCompareKey(id_n: str) -> Tuple[str, int]:
-            index = id_n.rfind('_')
-            return id_n[:index], int(id_n[index + 1:])
-        
-        namespace: str = '{}::{{}}'.format(self.name)
-        codeSplit: Dict[str, List[str]] = {label: ['{}:'.format(label)] + block.codeSplit
-                                           for label, block in self.blocks.items()}
-        for label, block in self.blocks.items():
-            codeSplit[label].append('transferCondition: {}'.format(block.transferCondition))
-            codeSplit[label].append('trueList:  {{{}}}'.format(', '.join(block.trueList)))
-            codeSplit[label].append('falseList: {{{}}}'.format(', '.join(block.falseList)))
-            codeSplit[label].append('nextList:  {{{}}}'.format(', '.join(block.nextList)))
-            codeSplit[label].append('GEN:  {{{}}}'.format(', '.join(sorted(block.GEN, key = idCompareKey))))
-            codeSplit[label].append('KILL: {{{}}}'.format(', '.join(sorted(block.KILL, key = idCompareKey))))
-            codeSplit[label].append('USE:  {{{}}}'.format(', '.join(sorted(block.USE, key = idCompareKey))))
-            codeSplit[label].append('IN:   {{{}}}'.format(', '.join(sorted(block.IN, key = idCompareKey))))
-            codeSplit[label].append('OUT:  {{{}}}'.format(', '.join(sorted(block.OUT, key = idCompareKey))))
-            codeSplit[label].insert(-9, '-' * max(map(len, codeSplit[label])))
-        nodeLabels: Dict[str, str] = {label: r'{}\l'.format(r'\l'.join(codeSplit[label]))
-                                      for label, block in self.blocks.items()}
-        graph.add_node(namespace.format('entry'), label = 'entry', style = 'bold', shape = 'ellipse')
-        graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
-        for block in self.blocks.values():
-            graph.add_node(namespace.format(block.label), label = nodeLabels[block.label], shape = 'box')
-            if re.search('return\s*\w*\s*;', string = block.code) is not None:
-                graph.add_edge(namespace.format(block.label), namespace.format('exit'))
-        graph.add_edge(namespace.format('entry'), namespace.format('<entry>'))
-        for block, neighbors in self.controlFlow.items():
-            for successor in neighbors['successor']:
-                graph.add_edge(namespace.format(block), namespace.format(successor))
-        nbunch: List[str] = [namespace.format('entry'), namespace.format('exit')]
-        nbunch.extend(namespace.format(label) for label in self.blockLabels)
-        graph.add_subgraph(nbunch = nbunch, name = 'cluster_{}'.format(self.name), label = self.declaration,
-                           style = 'dashed', fontname = 'Menlo bold')
-        return graph
-    
-    def drawSimpleControlFlowGraph(self, graph: pgv.AGraph) -> pgv.AGraph:
-        for prefix in ('', 'dominant::'):
-            
-            namespace: str = '{}{}::{{}}'.format(prefix, self.name)
-            graph.add_node(namespace.format('entry'), label = 'entry', style = 'bold', shape = 'ellipse')
-            graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
-            for block in self.blocks.values():
-                graph.add_node(namespace.format(block.label), label = '{}\l'.format(block.label), shape = 'box')
-                if re.search('return\s*\w*\s*;', string = block.code) is not None:
-                    graph.add_edge(namespace.format(block.label), namespace.format('exit'))
-            graph.add_edge(namespace.format('entry').format(self.declaration), namespace.format('<entry>'))
-            for label, neighborLabels in self.controlFlow.items():
-                for successorLabel in neighborLabels['successor']:
-                    graph.add_edge(namespace.format(label), namespace.format(successorLabel), color = (None if prefix != '' else 'black'))
-            for label in self.blockLabels:
-                for dominantBlockLabel in self.dominantBlockLabelsOf(block = label):
-                    graph.add_edge(namespace.format(dominantBlockLabel), namespace.format(label),
-                                   color = ('black' if prefix != '' else None), style = 'dashed')
-            nbunch: List[str] = [namespace.format('entry'), namespace.format('exit')]
-            nbunch.extend(namespace.format(label) for label in self.blockLabels)
-            graph.add_subgraph(nbunch = nbunch,
-                               name = 'cluster_{}{}'.format(prefix, self.name),
-                               label = '{}{}'.format(('dominant relations of ' if prefix != '' else ''), self.declaration),
-                               style = 'dashed', fontname = 'Menlo bold')
-    
-    def drawConstraintGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, compound = True, layout = 'dot')
-        graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
-        if self.ret is not None:
-            graph.add_node(func.ret, label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
-        for arg in self.varFromArg:
-            graph.add_node(arg, label = 'arg: {}'.format(arg), style = 'bold', color = 'forestgreen')
-        for block in self.blocks.values():
-            for stmt, constraint in block.constraints.items():
-                if constraint['type'] == 'assign':
-                    arg: str = constraint['arg1']
-                    if number.fullmatch(string = arg):
-                        graph.add_node('{}::{}'.format(block.label, arg), label = arg)
-                        arg = '{}::{}'.format(block.label, arg)
-                    graph.add_edge(arg, constraint['res'])
-                else:
-                    if constraint['type'] == 'condition':
-                        graph.add_node(stmt, style = 'bold', color = 'orange')
-                        graph.add_node(constraint['true'], style = 'bold', color = 'purple')
-                        graph.add_node(constraint['false'], style = 'bold', color = 'purple')
-                        graph.add_edge(stmt, constraint['true'], label = 'T', fontname = 'Menlo bold', fontcolor = 'brown')
-                        graph.add_edge(stmt, constraint['false'], label = 'F', fontname = 'Menlo bold', fontcolor = 'brown')
-                    else:
-                        color: str = 'crimson'
-                        if constraint['type'] == 'funcCall':
-                            color = 'red'
-                        elif constraint['op'] == 'PHI':
-                            color = 'deeppink'
-                        graph.add_node(stmt, label = constraint['op'], style = 'bold', color = color)
-                    for arg in constraint['args']:
-                        if number.fullmatch(string = arg):
-                            graph.add_node('{}::{}'.format(block.label, arg), label = arg)
-                            arg = '{}::{}'.format(block.label, arg)
-                        graph.add_edge(arg, stmt)
-                    
-                    try:
-                        graph.add_edge(stmt, constraint['res'])
-                    except KeyError:
-                        pass
-        if file is not None:
-            graph.draw(path = file, prog = 'dot')
-            # from matplotlib import pyplot as plt
-            # plt.imshow(plt.imread(fname = file))
-            # plt.xticks([])
-            # plt.yticks([])
-            # plt.show()
-        return graph
-    
     @staticmethod
     def parseVariableDeclaration(statement: str) -> Dict[str, str]:
         identifiers: Dict[str, str] = OrderedDict()
@@ -499,6 +394,7 @@ class Block(object):
                             self.__USE.add(arg)
                 except KeyError:
                     pass
+            self.__USE.intersection_update(self.IN)
         return self.__USE
     
     @property
@@ -636,10 +532,43 @@ class RangeAnalyser(object):
         return self.__functions
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, layout = 'dot')
+        def idCompareKey(id_n: str) -> Tuple[str, int]:
+            index = id_n.rfind('_')
+            return id_n[:index], int(id_n[index + 1:])
+        
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
-            func.drawControlFlowGraph(graph = graph)
+            namespace: str = '{}::{{}}'.format(func.name)
+            codeSplit: Dict[str, List[str]] = {label: ['{}:'.format(label)] + block.codeSplit
+                                               for label, block in func.blocks.items()}
+            for label, block in func.blocks.items():
+                codeSplit[label].append('transferCondition: {}'.format(block.transferCondition))
+                codeSplit[label].append('trueList:  {{{}}}'.format(', '.join(block.trueList)))
+                codeSplit[label].append('falseList: {{{}}}'.format(', '.join(block.falseList)))
+                codeSplit[label].append('nextList:  {{{}}}'.format(', '.join(block.nextList)))
+                codeSplit[label].append('GEN:  {{{}}}'.format(', '.join(sorted(block.GEN, key = idCompareKey))))
+                codeSplit[label].append('KILL: {{{}}}'.format(', '.join(sorted(block.KILL, key = idCompareKey))))
+                codeSplit[label].append('USE:  {{{}}}'.format(', '.join(sorted(block.USE, key = idCompareKey))))
+                codeSplit[label].append('IN:   {{{}}}'.format(', '.join(sorted(block.IN, key = idCompareKey))))
+                codeSplit[label].append('OUT:  {{{}}}'.format(', '.join(sorted(block.OUT, key = idCompareKey))))
+                codeSplit[label].insert(-9, '-' * max(map(len, codeSplit[label])))
+            nodeLabels: Dict[str, str] = {label: r'{}\l'.format(r'\l'.join(codeSplit[label]))
+                                          for label, block in func.blocks.items()}
+            graph.add_node(namespace.format('entry'), label = 'entry', style = 'bold', shape = 'ellipse')
+            graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
+            for block in func.blocks.values():
+                graph.add_node(namespace.format(block.label), label = nodeLabels[block.label], shape = 'box')
+                if re.search('return\s*\w*\s*;', string = block.code) is not None:
+                    graph.add_edge(namespace.format(block.label), namespace.format('exit'))
+            graph.add_edge(namespace.format('entry'), namespace.format('<entry>'))
+            for block, neighbors in func.controlFlow.items():
+                for successor in neighbors['successor']:
+                    graph.add_edge(namespace.format(block), namespace.format(successor))
+            nbunch: List[str] = [namespace.format('entry'), namespace.format('exit')]
+            nbunch.extend(namespace.format(label) for label in func.blockLabels)
+            graph.add_subgraph(nbunch = nbunch, name = 'cluster_{}'.format(func.name), label = func.declaration,
+                               style = 'dashed', fontname = 'Menlo bold')
         if file is not None:
             graph.draw(path = file, prog = 'dot')
             # from matplotlib import pyplot as plt
@@ -650,10 +579,97 @@ class RangeAnalyser(object):
         return graph
     
     def drawSimpleControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, layout = 'dot')
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
-            func.drawSimpleControlFlowGraph(graph = graph)
+            for prefix in ('', 'dominant::'):
+                namespace: str = '{}{}::{{}}'.format(prefix, func.name)
+                graph.add_node(namespace.format('entry'), label = 'entry', style = 'bold', shape = 'ellipse')
+                graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
+                for block in func.blocks.values():
+                    graph.add_node(namespace.format(block.label), label = '{}\l'.format(block.label), shape = 'box')
+                    if re.search('return\s*\w*\s*;', string = block.code) is not None:
+                        graph.add_edge(namespace.format(block.label), namespace.format('exit'))
+                graph.add_edge(namespace.format('entry'), namespace.format('<entry>'))
+                for label, neighborLabels in func.controlFlow.items():
+                    for successorLabel in neighborLabels['successor']:
+                        graph.add_edge(namespace.format(label), namespace.format(successorLabel),
+                                       color = (None if prefix != '' else 'black'))
+                for label in func.blockLabels:
+                    for dominantBlockLabel in func.dominantBlockLabelsOf(block = label):
+                        graph.add_edge(namespace.format(dominantBlockLabel), namespace.format(label),
+                                       color = ('black' if prefix != '' else None), style = 'dashed')
+                nbunch: List[str] = [namespace.format('entry'), namespace.format('exit')]
+                nbunch.extend(namespace.format(label) for label in func.blockLabels)
+                graph.add_subgraph(nbunch = nbunch,
+                                   name = 'cluster_{}{}'.format(prefix, func.name),
+                                   label = '{}{}'.format(('dominant relations of ' if prefix != '' else ''), func.prototype),
+                                   style = 'dashed', fontname = 'Menlo bold')
+        if file is not None:
+            graph.draw(path = file, prog = 'dot')
+            # from matplotlib import pyplot as plt
+            # plt.imshow(plt.imread(fname = file))
+            # plt.xticks([])
+            # plt.yticks([])
+            # plt.show()
+        return graph
+    
+    def drawConstraintGraph(self, file: str = None) -> pgv.AGraph:
+        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, compound = True, layout = 'dot')
+        graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
+        for func in self.functions.values():
+            namespace: str = '{}::{{}}'.format(func.name)
+            nbunch: List[str] = list()
+            for block in func.blocks.values():
+                for stmt, constraint in block.constraints.items():
+                    try:
+                        graph.add_node(namespace.format(constraint['res']), label = constraint['res'])
+                        nbunch.append(namespace.format(constraint['res']))
+                    except KeyError:
+                        pass
+                    if constraint['type'] == 'assign':
+                        arg: str = constraint['arg1']
+                        if number.fullmatch(string = arg):
+                            graph.add_node(namespace.format('{}::{}'.format(block.label, arg)), label = arg)
+                            arg: str = '{}::{}'.format(block.label, arg)
+                            nbunch.append(namespace.format(arg))
+                        graph.add_edge(namespace.format(arg), namespace.format(constraint['res']))
+                    else:
+                        nbunch.append(namespace.format(stmt))
+                        if constraint['type'] == 'condition':
+                            for arg in constraint['args']:
+                                pass
+                            
+                            graph.add_node(namespace.format(stmt), label = stmt, style = 'bold', color = 'orange')
+                            graph.add_node(namespace.format('({})::true'.format(stmt)), style = 'bold', color = 'purple')
+                            graph.add_node(namespace.format('({})::false'.format(stmt)), style = 'bold', color = 'purple')
+                            graph.add_edge(namespace.format(stmt), namespace.format('({})::true'.format(stmt)),
+                                           label = 'T', fontname = 'Menlo bold', fontcolor = 'brown')
+                            graph.add_edge(namespace.format(stmt), namespace.format('({})::false'.format(stmt)),
+                                           label = 'F', fontname = 'Menlo bold', fontcolor = 'brown')
+                            nbunch.extend([namespace.format('({})::true'.format(stmt)), namespace.format('({})::false'.format(stmt))])
+                        else:
+                            color: str = 'crimson'
+                            if constraint['type'] == 'funcCall':
+                                color: str = 'red'
+                            elif constraint['op'] == 'PHI':
+                                color: str = 'deeppink'
+                            graph.add_node(namespace.format(stmt), label = constraint['op'], style = 'bold', color = color)
+                            graph.add_edge(namespace.format(stmt), namespace.format(constraint['res']))
+                        for arg in constraint['args']:
+                            if number.fullmatch(string = arg):
+                                graph.add_node(namespace.format('{}::{}'.format(block.label, arg)), label = arg)
+                                arg: str = '{}::{}'.format(block.label, arg)
+                                nbunch.append(namespace.format(arg))
+                            graph.add_edge(namespace.format(arg), namespace.format(stmt))
+            if func.ret is not None:
+                graph.add_node(namespace.format(func.ret), label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
+                nbunch.append(namespace.format(func.ret))
+            for arg in func.varFromArg:
+                graph.add_node(namespace.format(arg), label = 'arg: {}'.format(arg), style = 'bold', color = 'forestgreen')
+                nbunch.append(namespace.format(arg))
+            graph.add_subgraph(nbunch = nbunch, name = 'cluster_{}'.format(func.name), label = func.declaration,
+                               style = 'dashed', fontname = 'Menlo bold')
         if file is not None:
             graph.draw(path = file, prog = 'dot')
             # from matplotlib import pyplot as plt
@@ -683,8 +699,8 @@ if __name__ == '__main__':
             func.dominantBlockLabelsOf(block = '<entry>')
             func.dominantBlockLabelsBy(block = '<entry>')
             print()
-            func.drawConstraintGraph(file = '{}_CG_{}.png'.format(os.path.splitext(ssaFile)[0], func.name))
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
         # break
