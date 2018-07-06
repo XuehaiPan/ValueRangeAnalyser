@@ -2,16 +2,27 @@ from typing import Type, Union, Sequence, List, Tuple
 from math import inf, isinf, nan, isnan
 
 
-__all__ = ['ValueRange']
+__all__ = ['ValueRange', 'EmptySet', 'IntegerNumberSet', 'RealNumberSet', 'dtypeFromString']
 
 BasicValueRange = type('BasicValueRange', (object,), dict())
 ValueRange = type('ValueRange', (object,), dict())
 
 
+def dtypeFromString(dtype: str) -> Union[Type[int], Type[float]]:
+    if dtype == 'int':
+        return int
+    elif dtype == 'float':
+        return float
+    else:
+        raise ValueError
+
+
 class BasicValueRange(object):
     def __init__(self, lower: Union[int, float] = None,
                  upper: Union[int, float] = None,
-                 dtype: Union[Type[int], Type[float]] = float):
+                 dtype: Union[str, Type[int], Type[float]] = float):
+        if isinstance(dtype, str):
+            dtype: Union[Type[int], Type[float]] = dtypeFromString(dtype = dtype)
         if dtype != int and dtype != float:
             raise ValueError
         self.__dtype: Type[dtype] = dtype
@@ -94,7 +105,7 @@ class BasicValueRange(object):
     def isSuperset(self, other: BasicValueRange) -> bool:
         return other.isSubset(other = self)
     
-    def asDtype(self, dtype: Union[Type[int], Type[float]]) -> BasicValueRange:
+    def asDtype(self, dtype: Union[str, Type[int], Type[float]]) -> BasicValueRange:
         return BasicValueRange(lower = self.lower, upper = self.upper, dtype = dtype)
     
     def asInt(self) -> BasicValueRange:
@@ -305,7 +316,7 @@ class ValueRange(object):
                 self.__valueRanges: List[BasicValueRange] = list(map(BasicValueRange.asFloat, self.valueRanges))
             self.reduce()
     
-    def asDtype(self, dtype: Union[Type[int], Type[float]]) -> ValueRange:
+    def asDtype(self, dtype: Union[str, Type[int], Type[float]]) -> ValueRange:
         return ValueRange(valueRanges = list(map(lambda valueRange: valueRange.asDtype(dtype = dtype), self.valueRanges)))
     
     def __iadd__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> None:

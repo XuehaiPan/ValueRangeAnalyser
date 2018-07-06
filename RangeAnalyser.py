@@ -3,7 +3,7 @@ import os
 from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
 from collections import OrderedDict
 import pygraphviz as pgv
-from ValueRange import ValueRange, EmptySet, IntegerNumberSet, RealNumberSet
+from ValueRange import ValueRange, EmptySet, IntegerNumberSet, RealNumberSet, dtypeFromString
 
 
 keywords: Set[str] = {'int', 'float', 'if', 'else', 'goto'}
@@ -97,7 +97,7 @@ class Function(object):
                                string = code)
             code: str = re.sub(r'(?P<postfix>\w*_\d+)\s*\(\d+\)', repl = lambda m: m.group('postfix'), string = code)
             matcher: Match = functionImplementation.search(string = code)
-            self.__varFromArg: Set[str] = varFromArg
+            self.__varsFromArg: Set[str] = varFromArg
             self.__code: str = code
             self.__codeSplit: List[str] = code.splitlines()
             self.__body: str = matcher.group('body').strip()
@@ -108,13 +108,13 @@ class Function(object):
                 self.__ret: str = re.search('return\s+(?P<ret>\w+)\s*;', string = self.body).group('ret')
             except AttributeError:
                 self.__ret: str = None
-            self.__declaration: str = '{}({})'.format(self.name, ', '.join('{} {}'.format(type, id)
-                                                                           for id, type in self.args.items()))
+            self.__declaration: str = '{}({})'.format(self.name, ', '.join('{} {}'.format(dtype, var)
+                                                                           for var, dtype in self.args.items()))
             self.__prototype: str = '{}({})'.format(self.name, ', '.join(self.args.values()))
             self.__variables: Dict[str, str] = Function.parseVariableDeclaration(statement = code)
             self.__localVariables: Dict[str, str] = Function.parseVariableDeclaration(statement = self.body)
             self.__GEN: Set[str] = Function.parseVariableAssignment(statement = self.body)
-            self.__GEN.update(self.varFromArg)
+            self.__GEN.update(self.varsFromArg)
             self.__blockLabels: List[str] = None
             self.__blocks: Dict[str, Block] = None
             self.__controlFlow: Dict[str, Dict[str, Set[str]]] = None
@@ -122,6 +122,8 @@ class Function(object):
             self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = None
             self.__dominantBlockLabelsOf: Dict[str, Set[str]] = None
             self.__dominantBlockLabelsBy: Dict[str, Set[str]] = None
+            self.__defOfVariable: Dict[str, List[str]] = None
+            self.__useOfVariable: Dict[str, List[str]] = None
         else:
             raise ValueError
     
@@ -162,8 +164,8 @@ class Function(object):
         return self.__ret
     
     @property
-    def varFromArg(self) -> Set[str]:
-        return self.__varFromArg
+    def varsFromArg(self) -> Set[str]:
+        return self.__varsFromArg
     
     @property
     def variables(self) -> Dict[str, str]:
@@ -178,13 +180,32 @@ class Function(object):
         return self.__GEN
     
     @property
+    def defOfVariable(self) -> Dict[str, List[str]]:
+        if self.__defOfVariable is None:
+            _ = self.useOfVariable
+        return self.__defOfVariable
+    
+    @property
+    def useOfVariable(self) -> Dict[str, List[str]]:
+        if self.__useOfVariable is None:
+            self.__useOfVariable: Dict[str, List[str]] = {var: list() for var in self.GEN}
+            self.__defOfVariable: Dict[str, List[str]] = {var: list() for var in self.GEN}
+            for stmt, constraint in self.constraints.items():
+                try:
+                    self.__defOfVariable[constraint['res']].append(stmt)
+                except KeyError:
+                    pass
+                for arg in constraint['args']:
+                    try:
+                        self.__useOfVariable[arg].append(stmt)
+                    except KeyError:
+                        pass
+        return self.__useOfVariable
+    
+    @property
     def blockLabels(self) -> List[str]:
         if self.__blockLabels is None:
-            self.__blockLabels = ['<entry>']
-            for stmt in self.bodySplit:
-                matcher: Match = blockLabel.fullmatch(string = stmt)
-                if matcher is not None:
-                    self.__blockLabels.append(matcher.group('label'))
+            self.__blockLabels: List[str] = list(self.blocks.keys())
         return self.__blockLabels
     
     @property
@@ -192,18 +213,18 @@ class Function(object):
         if self.__blocks is None:
             self.__blocks: Dict[str, Block] = OrderedDict()
             label: str = '<entry>'
-            codeSplit: List[str] = ['{} {};'.format(type, id) for id, type in self.args.items()]
+            codeSplit: List[str] = ['{} {};'.format(dtype, var) for var, dtype in self.args.items()]
             for stmt in self.bodySplit:
                 matcher: Match = blockLabel.fullmatch(string = stmt)
                 if matcher is None:
                     codeSplit.append(stmt)
                 else:
                     self.__blocks[label] = Block(func = self, label = label, codeSplit = codeSplit)
-                    label = matcher.group('label')
-                    codeSplit = []
+                    label: str = matcher.group('label')
+                    codeSplit: List[str] = list()
             else:
-                self.__blocks[label] = Block(func = self, label = label, codeSplit = codeSplit)
-            self.__blocks['<entry>'].GEN.update(self.varFromArg)
+                self.__blocks[label]: Block = Block(func = self, label = label, codeSplit = codeSplit)
+            self.__blocks['<entry>'].GEN.update(self.varsFromArg)
         return self.__blocks
     
     @property
@@ -239,7 +260,7 @@ class Function(object):
     @property
     def constraints(self) -> Dict[str, Dict[str, Union[str, List[str]]]]:
         if self.__constraints is None:
-            self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = dict()
+            self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = OrderedDict()
             for block in self.blocks.values():
                 self.__constraints.update(block.constraints)
         return self.__constraints
@@ -338,10 +359,10 @@ class Block(object):
         self.__KILL.difference_update(self.GEN)
         self.__USE: Set[str] = None
         self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = None
+        self.__transferCondition: str = None
         self.__trueList: List[str] = list()
         self.__falseList: List[str] = list()
-        self.__nextList: List[str] = list()
-        self.__transferCondition: str = None
+        self.__nextList: List[str] = None
         try:
             if ifStatement.fullmatch(string = self.codeSplit[-4]) is not None:
                 transferConstraint: Dict[str, str] = list(self.constraints.values())[-1]
@@ -350,14 +371,6 @@ class Block(object):
                 self.falseList.append(transferConstraint['false'])
         except IndexError:
             pass
-        if self.transferCondition is None:
-            try:
-                self.nextList.append(gotoStatement.fullmatch(string = self.codeSplit[-1]).group('label'))
-            except AttributeError:
-                try:
-                    self.nextList.append(self.function.blockLabels[self.function.blockLabels.index(self.label) + 1])
-                except IndexError:
-                    pass
     
     @property
     def function(self) -> Function:
@@ -484,6 +497,8 @@ class Block(object):
                                                      'res': res,
                                                      'arg1': matcher.group('arg1'),
                                                      'args': [matcher.group('arg1')]}
+            for constraint in constraints.values():
+                constraint['blockLabel']: str = self.label
             self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = constraints
         return self.__constraints
     
@@ -501,6 +516,16 @@ class Block(object):
     
     @property
     def nextList(self) -> List[str]:
+        if self.__nextList is None:
+            self.__nextList: List[str] = list()
+            if self.transferCondition is None:
+                try:
+                    self.nextList.append(gotoStatement.fullmatch(string = self.codeSplit[-1]).group('label'))
+                except AttributeError:
+                    try:
+                        self.nextList.append(self.function.blockLabels[self.function.blockLabels.index(self.label) + 1])
+                    except IndexError:
+                        pass
         return self.__nextList
     
     @property
@@ -530,22 +555,70 @@ class RangeAnalyser(object):
         self.__functions: Dict[str, Function] = OrderedDict()
         for matcher in functionImplementation.finditer(string = code):
             self.__functions[matcher.group('name')] = Function(matcher.group())
+        self.__functionNames: List[str] = list(self.functions.keys())
     
     @property
     def functions(self) -> Dict[str, Function]:
         return self.__functions
     
+    @property
+    def functionNames(self) -> List[str]:
+        return self.__functionNames
+    
     def analyse(self, func: Union[str, Function], args: Dict[str, ValueRange] = None) -> ValueRange:
+        def doWidening() -> None:
+            for constraint in func.constraints.values():
+                try:
+                    attr[constraint['res']]: Union[str, ValueRange] = {'type': 'var',
+                                                                       'dtype': None,
+                                                                       'range': EmptySet}
+                except KeyError:
+                    pass
+                for arg in constraint['args']:
+                    if number.fullmatch(string = arg):
+                        num: Union[int, float] = (int(arg) if integer.fullmatch(string = arg) else float(arg))
+                        attr[arg]: Union[str, ValueRange] = {'type': 'num',
+                                                             'dtype': type(num),
+                                                             'range': ValueRange.asValueRange(value = num)}
+                    else:
+                        attr[arg]: Union[str, ValueRange] = {'type': 'var',
+                                                             'dtype': None,
+                                                             'range': EmptySet}
+            for id, dtype in func.variables.items():
+                for var in attr.keys():
+                    if var.startswith(id):
+                        attr[var]['dtype']: str = dtype
+            for arg in func.args.keys():
+                for var in func.varsFromArg:
+                    if var.startswith(arg):
+                        attr[var]['type']: str = 'arg'
+                        attr[var]['dtype']: str = func.args[arg]
+                        attr[var]['range']: ValueRange = args[arg].asDtype(dtype = attr[var]['dtype'])
+            # changed: bool = True
+            # while changed:
+            #     changed: bool = False
+            #     for var in attr:
+            #         pass
+        
+        def doFutureResolution() -> None:
+            pass
+        
+        def doNarrowing() -> None:
+            pass
+        
         if isinstance(func, Function):
             func: str = func.name
         func: Function = self.functions[func]
-        valueRanges: Dict[str, ValueRange] = {var: EmptySet for var in func.GEN}
-        for arg in func.args.keys():
-            for var in func.varFromArg:
-                if var.startswith(arg):
-                    valueRanges[var] = args[arg].asDtype(dtype = (int if func.args[arg] == 'int' else float))
-        print(valueRanges)
-        # return valueRanges[func.ret]
+        
+        attr: Dict[str, Dict[str, Union[str, ValueRange]]] = dict()
+        doWidening()
+        doFutureResolution()
+        doNarrowing()
+        print(attr)
+        try:
+            return attr[func.ret]['range']
+        except KeyError:
+            return EmptySet
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
         def idCompareKey(id_n: str) -> Tuple[str, int]:
@@ -636,38 +709,37 @@ class RangeAnalyser(object):
         for func in self.functions.values():
             namespace: str = '{}::{{}}'.format(func.name)
             nbunch: List[str] = list()
-            for block in func.blocks.values():
-                for stmt, constraint in block.constraints.items():
-                    try:
-                        graph.add_node(namespace.format(constraint['res']), label = constraint['res'])
-                        nbunch.append(namespace.format(constraint['res']))
-                    except KeyError:
-                        pass
-                    if constraint['type'] == 'assignment':
-                        arg: str = constraint['arg1']
-                        if number.fullmatch(string = arg):
-                            graph.add_node(namespace.format('{}::{}'.format(block.label, arg)), label = arg)
-                            arg: str = '{}::{}'.format(block.label, arg)
-                            nbunch.append(namespace.format(arg))
-                        graph.add_edge(namespace.format(arg), namespace.format(constraint['res']))
+            for stmt, constraint in func.constraints.items():
+                try:
+                    graph.add_node(namespace.format(constraint['res']), label = constraint['res'])
+                    nbunch.append(namespace.format(constraint['res']))
+                except KeyError:
+                    pass
+                if constraint['type'] == 'assignment':
+                    arg: str = constraint['arg1']
+                    if number.fullmatch(string = arg):
+                        graph.add_node(namespace.format('{}::{}'.format(constraint['blockLabel'], arg)), label = arg)
+                        arg: str = '{}::{}'.format(constraint['blockLabel'], arg)
+                        nbunch.append(namespace.format(arg))
+                    graph.add_edge(namespace.format(arg), namespace.format(constraint['res']))
+                else:
+                    nbunch.append(namespace.format(stmt))
+                    if constraint['type'] == 'condition':
+                        graph.add_node(namespace.format(stmt), label = stmt, style = 'bold', color = 'orange')
                     else:
-                        nbunch.append(namespace.format(stmt))
-                        if constraint['type'] == 'condition':
-                            graph.add_node(namespace.format(stmt), label = stmt, style = 'bold', color = 'orange')
-                        else:
-                            color: str = 'crimson'
-                            if constraint['type'] == 'funcCall':
-                                color: str = 'brown'
-                            elif constraint['op'] == 'PHI':
-                                color: str = 'purple'
-                            graph.add_node(namespace.format(stmt), label = constraint['op'], style = 'bold', color = color)
-                            graph.add_edge(namespace.format(stmt), namespace.format(constraint['res']))
-                        for arg in constraint['args']:
-                            if number.fullmatch(string = arg):
-                                graph.add_node(namespace.format('{}::{}'.format(block.label, arg)), label = arg)
-                                arg: str = '{}::{}'.format(block.label, arg)
-                                nbunch.append(namespace.format(arg))
-                            graph.add_edge(namespace.format(arg), namespace.format(stmt))
+                        color: str = 'crimson'
+                        if constraint['type'] == 'funcCall':
+                            color: str = 'brown'
+                        elif constraint['op'] == 'PHI':
+                            color: str = 'purple'
+                        graph.add_node(namespace.format(stmt), label = constraint['op'], style = 'bold', color = color)
+                        graph.add_edge(namespace.format(stmt), namespace.format(constraint['res']))
+                    for arg in constraint['args']:
+                        if number.fullmatch(string = arg):
+                            graph.add_node(namespace.format('{}::{}'.format(constraint['blockLabel'], arg)), label = arg)
+                            arg: str = '{}::{}'.format(constraint['blockLabel'], arg)
+                            nbunch.append(namespace.format(arg))
+                        graph.add_edge(namespace.format(arg), namespace.format(stmt))
             for stmt, constraint in func.constraints.items():
                 if constraint['type'] == 'condition':
                     for flag in ('true', 'false'):
@@ -714,7 +786,7 @@ class RangeAnalyser(object):
             if func.ret is not None:
                 graph.add_node(namespace.format(func.ret), label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
                 nbunch.append(namespace.format(func.ret))
-            for arg in func.varFromArg:
+            for arg in func.varsFromArg:
                 graph.add_node(namespace.format(arg), label = 'arg: {}'.format(arg), style = 'bold', color = 'forestgreen')
                 nbunch.append(namespace.format(arg))
             graph.add_subgraph(nbunch = nbunch, name = 'cluster_{}'.format(func.name), label = func.declaration,
@@ -729,7 +801,7 @@ class RangeAnalyser(object):
         return graph
 
 
-if __name__ == '__main__':
+def main() -> None:
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
         # i = 9
@@ -745,6 +817,8 @@ if __name__ == '__main__':
             print('control flow graph:', func.controlFlow)
             print('data flow:', func.dataFlow)
             print('constraints:', func.constraints)
+            print('defOfVariable:', func.defOfVariable)
+            print('useOfVariable:', func.useOfVariable)
             analyser.analyse(func = func, args = {arg: EmptySet for arg in func.args.keys()})
             print()
         print()
@@ -752,3 +826,7 @@ if __name__ == '__main__':
         analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
         # break
+
+
+if __name__ == '__main__':
+    main()
