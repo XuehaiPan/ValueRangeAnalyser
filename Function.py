@@ -78,15 +78,18 @@ class Function(object):
             self.__bodySplit: List[str] = self.body.splitlines()
             self.__name: str = matcher.group('name').strip()
             self.__args: Dict[str, str] = Function.parseVariableDeclaration(statement = '{},'.format(matcher.group('args')))
-            try:
-                self.__ret: str = re.search('return\s+(?P<ret>\w+)\s*;', string = self.body).group('ret')
-            except AttributeError:
-                self.__ret: str = None
             self.__declaration: str = '{}({})'.format(self.name, ', '.join('{} {}'.format(dtype, var)
                                                                            for var, dtype in self.args.items()))
             self.__prototype: str = '{}({})'.format(self.name, ', '.join(self.args.values()))
             self.__variables: Dict[str, str] = Function.parseVariableDeclaration(statement = code)
             self.__localVariables: Dict[str, str] = Function.parseVariableDeclaration(statement = self.body)
+            try:
+                self.__ret: str = re.search('return\s*(?P<ret>\w*)\s*;', string = self.body).group('ret')
+                if self.__ret == '':
+                    self.__ret: str = None
+            except AttributeError:
+                raise ValueError
+            self.__returnBlockLabel: str = None
             self.__GEN: List[str] = list(self.varsFromArg)
             self.__GEN.extend(Function.parseVariableAssignment(statement = self.body))
             self.__blockLabels: List[str] = None
@@ -134,12 +137,21 @@ class Function(object):
         return self.__args
     
     @property
+    def varsFromArg(self) -> Set[str]:
+        return self.__varsFromArg
+    
+    @property
     def ret(self) -> str:
         return self.__ret
     
     @property
-    def varsFromArg(self) -> Set[str]:
-        return self.__varsFromArg
+    def returnBlockLabel(self) -> str:
+        if self.__returnBlockLabel is None:
+            for block in self.blocks.values():
+                if re.search('return\s*(?P<ret>\w*)\s*;', string = block.code) is not None:
+                    self.__returnBlockLabel: str = block.label
+                    break
+        return self.__returnBlockLabel
     
     @property
     def variables(self) -> Dict[str, str]:

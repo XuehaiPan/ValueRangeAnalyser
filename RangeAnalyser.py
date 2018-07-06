@@ -47,16 +47,16 @@ class RangeAnalyser(object):
         return self.__functionNames
     
     def analyse(self, func: Union[str, Function], args: Sequence[ValueRange], depth: int = 0) -> ValueRange:
-        def execute(stmt: str) -> ValueRange:
+        def execute(stmt: str, env: str) -> ValueRange:
             constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
             resRange: ValueRange = EmptySet
             if constraint['type'] == 'funcCall':
                 print('>' * (4 * depth + 3), 'call', self.functions[constraint['op']].declaration)
                 resRange: ValueRange = self.analyse(func = constraint['op'],
-                                                    args = list(attributes[arg]['range'] for arg in constraint['args']),
+                                                    args = list(attributes[arg]['range'][env] for arg in constraint['args']),
                                                     depth = depth + 1)
             elif constraint['type'] != 'condition':
-                arg1Range: ValueRange = attributes[constraint['arg1']]['range']
+                arg1Range: ValueRange = attributes[constraint['arg1']]['range'][env]
                 if constraint['type'] == 'assignment':
                     resRange: ValueRange = arg1Range
                 elif constraint['type'] == 'monocular':
@@ -67,7 +67,7 @@ class RangeAnalyser(object):
                     elif constraint['op'] == '(float)':
                         resRange: ValueRange = arg1Range.asDtype(dtype = float)
                 else:
-                    arg2Range: ValueRange = attributes[constraint['arg2']]['range']
+                    arg2Range: ValueRange = attributes[constraint['arg2']]['range'][env]
                     if constraint['type'] == 'PHI':
                         resRange: ValueRange = arg1Range.union(other = arg2Range)
                     elif constraint['type'] == 'arithmetic':
@@ -79,27 +79,27 @@ class RangeAnalyser(object):
                             resRange: ValueRange = arg1Range * arg2Range
                         elif constraint['op'] == '/':
                             resRange: ValueRange = arg1Range / arg2Range
-            attributes[constraint['res']]['range']: ValueRange = resRange
+            attributes[constraint['res']]['range'][env]: ValueRange = resRange
             return resRange
         
         def doWidening() -> None:
             for constraint in func.constraints.values():
                 try:
-                    attributes[constraint['res']]: Union[str, ValueRange] = {'type': 'var',
-                                                                             'dtype': None,
-                                                                             'range': EmptySet}
+                    attributes[constraint['res']]: Union[str, Dict[str, ValueRange]] = {'type': 'var',
+                                                                                        'dtype': None,
+                                                                                        'range': {'global': EmptySet}}
                 except KeyError:
                     pass
                 for arg in constraint['args']:
                     if number.fullmatch(string = arg):
                         num: Union[int, float] = (int(arg) if integer.fullmatch(string = arg) else float(arg))
-                        attributes[arg]: Union[str, ValueRange] = {'type': 'num',
-                                                                   'dtype': type(num).__name__,
-                                                                   'range': ValueRange.asValueRange(value = num)}
+                        attributes[arg]: Union[str, Dict[str, ValueRange]] = {'type': 'num',
+                                                                              'dtype': type(num).__name__,
+                                                                              'range': {'global': ValueRange.asValueRange(value = num)}}
                     else:
-                        attributes[arg]: Union[str, ValueRange] = {'type': 'var',
-                                                                   'dtype': None,
-                                                                   'range': EmptySet}
+                        attributes[arg]: Union[str, Dict[str, ValueRange]] = {'type': 'var',
+                                                                              'dtype': None,
+                                                                              'range': {'global': EmptySet}}
             for id, dtype in func.variables.items():
                 for var in attributes.keys():
                     if var.startswith(id):
@@ -109,7 +109,7 @@ class RangeAnalyser(object):
                     if var.startswith(arg):
                         attributes[var]['type']: str = 'arg'
                         attributes[var]['dtype']: str = func.args[arg]
-                        attributes[var]['range']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
+                        attributes[var]['range']['global']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
             definitions: Deque[str] = deque(filter(None, func.defOfVariable.values()))
             while len(definitions) > 0:
                 stmt: str = definitions.popleft()
@@ -119,8 +119,8 @@ class RangeAnalyser(object):
                     continue
                 if attributes[var]['type'] != 'var':
                     continue
-                oldRange: ValueRange = attributes[var]['range']
-                newRange: ValueRange = execute(stmt = func.defOfVariable[var])
+                oldRange: ValueRange = attributes[var]['range']['global']
+                newRange: ValueRange = execute(stmt = func.defOfVariable[var], env = 'global')
                 if newRange != oldRange:
                     if newRange.isEmptySet():
                         for arg in func.constraints[stmt]['args']:
@@ -140,8 +140,11 @@ class RangeAnalyser(object):
                                                               dtype = attributes[var]['dtype'])
                         else:
                             newRange: ValueRange = oldRange
-                    attributes[var]['range']: ValueRange = newRange
+                    attributes[var]['range']['global']: ValueRange = newRange
                     definitions.extend(func.useOfVariable[var])
+            for var in attributes.keys():
+                for blockLabel in func.blockLabels:
+                    attributes[var]['range'][blockLabel]: ValueRange = attributes[var]['range']['global']
         
         def doFutureResolution() -> None:
             pass
@@ -161,15 +164,15 @@ class RangeAnalyser(object):
         if func.ret is None:
             print('no return')
             return EmptySet
-        attributes: Dict[str, Dict[str, Union[str, ValueRange]]] = dict()
+        attributes: Dict[str, Dict[str, Union[str, Dict[str, ValueRange]]]] = dict()
         doWidening()
         doFutureResolution()
         doNarrowing()
         for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', attributes.keys()), key = Function.idCompareKey):
-            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']))
+            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']['global']))
         print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range']))
         # print(attributes)
-        return attributes[func.ret]['range']
+        return attributes[func.ret]['range'][func.blockLabels[-1]]
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
         graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
@@ -195,9 +198,8 @@ class RangeAnalyser(object):
             graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
             for block in func.blocks.values():
                 graph.add_node(namespace.format(block.label), label = nodeLabels[block.label], shape = 'box')
-                if re.search('return\s*\w*\s*;', string = block.code) is not None:
-                    graph.add_edge(namespace.format(block.label), namespace.format('exit'))
             graph.add_edge(namespace.format('entry'), namespace.format('<entry>'))
+            graph.add_edge(namespace.format(func.returnBlockLabel), namespace.format('exit'))
             for block, neighbors in func.controlFlow.items():
                 for successor in neighbors['successor']:
                     graph.add_edge(namespace.format(block), namespace.format(successor))
@@ -224,9 +226,8 @@ class RangeAnalyser(object):
                 graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
                 for block in func.blocks.values():
                     graph.add_node(namespace.format(block.label), label = '{}\l'.format(block.label), shape = 'box')
-                    if re.search('return\s*\w*\s*;', string = block.code) is not None:
-                        graph.add_edge(namespace.format(block.label), namespace.format('exit'))
                 graph.add_edge(namespace.format('entry'), namespace.format('<entry>'))
+                graph.add_edge(namespace.format(func.returnBlockLabel), namespace.format('exit'))
                 for label, neighborLabels in func.controlFlow.items():
                     for successorLabel in neighborLabels['successor']:
                         graph.add_edge(namespace.format(label), namespace.format(successorLabel),
@@ -289,8 +290,8 @@ class RangeAnalyser(object):
                         graph.add_edge(namespace.format(arg), namespace.format(stmt))
             for stmt, constraint in func.constraints.items():
                 if constraint['type'] == 'condition':
-                    for flag in ('true', 'false'):
-                        for successor in map(func.blocks.get, constraint['{}List'.format(flag)]):
+                    for flag in ('trueList', 'falseList'):
+                        for successor in map(func.blocks.get, constraint[flag]):
                             for arg in constraint['args']:
                                 if number.fullmatch(string = arg) is not None:
                                     continue
