@@ -284,6 +284,23 @@ class Function(object):
     def predecessorsOf(self, block: Union[str, Block]) -> Set[Block]:
         return set(map(self.blocks.get, self.predecessorLabelsOf(block = block)))
     
+    def successorLabelsWithoutKilling(self, block: Union[str, Block], var: str) -> Set[str]:
+        if isinstance(block, Block):
+            block: str = block.label
+        traveledBlockLabels: Set[str] = set()
+        successorLabels: Set[str] = self.successorLabelsOf(block = block)
+        while len(successorLabels) > 0:
+            successorLabel: str = successorLabels.pop()
+            if successorLabel in traveledBlockLabels:
+                continue
+            traveledBlockLabels.add(successorLabel)
+            if var not in self.blocks[successorLabel].KILL:
+                successorLabels.update(self.successorLabelsOf(block = successorLabel))
+        return traveledBlockLabels
+    
+    def successorsWithoutKilling(self, block: Union[str, Block], var: str) -> Set[Block]:
+        return set(map(self.blocks.get, self.successorLabelsWithoutKilling(block = block, var = var)))
+    
     def dominantBlockLabelsOf(self, block: Union[str, Block]) -> Set[str]:
         if isinstance(block, Block):
             block: str = block.label
@@ -551,6 +568,12 @@ class Block(object):
     @property
     def predecessors(self) -> Set[Block]:
         return self.function.predecessorsOf(block = self)
+    
+    def successorLabelsWithoutKilling(self, var: str) -> Set[str]:
+        return self.function.successorLabelsWithoutKilling(block = self, var = var)
+    
+    def successorsWithoutKilling(self, var: str) -> Set[Block]:
+        return self.function.successorsWithoutKilling(block = self, var = var)
     
     def __str__(self) -> str:
         return self.label
