@@ -288,7 +288,7 @@ class Function(object):
         if isinstance(block, Block):
             block: str = block.label
         traveledBlockLabels: Set[str] = set()
-        successorLabels: Set[str] = self.successorLabelsOf(block = block)
+        successorLabels: Set[str] = set(self.successorLabelsOf(block = block))
         while len(successorLabels) > 0:
             successorLabel: str = successorLabels.pop()
             if successorLabel in traveledBlockLabels:
@@ -389,11 +389,16 @@ class Block(object):
         self.__falseList: List[str] = list()
         self.__nextList: List[str] = None
         try:
-            if ifStatement.fullmatch(string = self.codeSplit[-4]) is not None:
-                transferConstraint: Dict[str, str] = list(self.constraints.values())[-1]
-                self.__transferCondition: str = transferConstraint['stmt']
-                self.trueList.append(transferConstraint['true'])
-                self.falseList.append(transferConstraint['false'])
+            matcher: Match = ifStatement.fullmatch(string = self.codeSplit[-4])
+            if matcher is not None:
+                cond: str = matcher.group('cond').strip()
+                for op in ('==', '!=', '<', '>', '<=', '>='):
+                    matcher: Match = operations[op].fullmatch(string = cond)
+                    if matcher is not None:
+                        self.__transferCondition: str = '{} {} {}'.format(matcher.group('arg1'), op, matcher.group('arg2'))
+                        self.trueList.append(gotoStatement.fullmatch(string = self.codeSplit[-3]).group('label'))
+                        self.falseList.append(gotoStatement.fullmatch(string = self.codeSplit[-1]).group('label'))
+                        break
         except IndexError:
             pass
     
@@ -457,7 +462,8 @@ class Block(object):
                     matcher: Match = ifStatement.fullmatch(string = stmt)
                     cond: str = matcher.group('cond').strip()
                     for op in ('==', '!=', '<', '>', '<=', '>='):
-                        for matcher in operations[op].finditer(string = cond):
+                        matcher: Match = operations[op].fullmatch(string = cond)
+                        if matcher is not None:
                             stmt: str = '{} {} {}'.format(matcher.group('arg1'), op, matcher.group('arg2'))
                             constraints[stmt] = {'stmt': stmt,
                                                  'type': 'condition',
@@ -467,6 +473,12 @@ class Block(object):
                                                  'args': [matcher.group('arg1'), matcher.group('arg2')],
                                                  'true': gotoStatement.fullmatch(string = self.codeSplit[i + 1]).group('label'),
                                                  'false': gotoStatement.fullmatch(string = self.codeSplit[i + 3]).group('label')}
+                            # trueList: List[str] = [constraints[stmt]['true']]
+                            # falseList: List[str] = [constraints[stmt]['false']]
+                            # for arg in constraints[stmt]['args']:
+                            #     if number.fullmatch(string = arg) is None:
+                            #         trueList.extend(self.function.successorLabelsWithoutKilling(block = trueList[0], var = arg))
+                            #         falseList.extend(self.function.successorLabelsWithoutKilling(block = falseList[0], var = arg))
                     continue
                 elif phiStatement.fullmatch(string = stmt) is not None:
                     matcher: Match = phiStatement.fullmatch(string = stmt)
