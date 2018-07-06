@@ -423,9 +423,8 @@ class Block(object):
                     GEN.add(constraint['res'])
                 except KeyError:
                     pass
-            matcher: Match = re.search('return\s*(?P<ret>\w+)\s*;', string = self.code)
-            if matcher is not None:
-                self.__USE.add(matcher.group('ret'))
+            if self.function.returnBlockLabel == self.label and self.function.ret is not None:
+                self.__USE.add(self.function.ret)
             self.__USE.intersection_update(self.IN)
         return self.__USE
     

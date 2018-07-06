@@ -147,10 +147,68 @@ class RangeAnalyser(object):
                     attributes[var]['range'][blockLabel]: ValueRange = attributes[var]['range']['global']
         
         def doFutureResolution() -> None:
-            pass
+            for stmt in filter(lambda stmt: func.constraints[stmt]['type'] == 'condition', func.constraints.keys()):
+                constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+                op: str = constraint['op']
+                arg1: str = constraint['arg1']
+                arg2: str = constraint['arg2']
+                env: str = constraint['blockLabel']
+                arg1Range: ValueRange = attributes[arg1]['range'][env]
+                arg2Range: ValueRange = attributes[arg2]['range'][env]
+                arg1Resolution: Dict[str, ValueRange] = dict()
+                arg2Resolution: Dict[str, ValueRange] = dict()
+                if op == '<':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg1Range)
+                elif op == '<=':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg1Range)
+                if op == '>':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg1Range)
+                elif op == '>=':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg1Range)
+                elif op == '==':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg1Range)
+                elif op == '!=':
+                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg1Range)
+                resolutions[stmt] = {arg1: arg1Resolution, arg2: arg2Resolution}
         
         def doNarrowing() -> None:
             pass
+            for i in range(5):
+                for stmt in resolutions.keys():
+                    constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+                    env: str = constraint['blockLabel']
+                    for var, resolution in resolutions[stmt].items():
+                        if attributes[var]['type'] != 'num':
+                            varRange: ValueRange = attributes[var]['range'][env]
+                            for flag in ('true', 'false'):
+                                for blockLabel in constraint['{}List'.format(flag)]:
+                                    attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
+                for stmt, constraint in func.constraints.items():
+                    if constraint['type'] != 'condition':
+                        res: str = constraint['res']
+                        env: str = constraint['blockLabel']
+                        resRange: ValueRange = execute(stmt = stmt, env = env)
+                        for successor in func.successorsOf(block = env):
+                            if res in successor.IN:
+                                attributes[res]['range'][successor.label]: ValueRange = resRange
         
         if isinstance(func, Function):
             func: str = func.name
@@ -165,11 +223,17 @@ class RangeAnalyser(object):
             print('no return')
             return EmptySet
         attributes: Dict[str, Dict[str, Union[str, Dict[str, ValueRange]]]] = dict()
+        resolutions: Dict[str, Dict[str, Dict[str, ValueRange]]] = dict()
         doWidening()
         doFutureResolution()
         doNarrowing()
+        print(resolutions)
         for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', attributes.keys()), key = Function.idCompareKey):
-            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']['global']))
+            try:
+                env: str = func.constraints[func.defOfVariable[var]]['blockLabel']
+            except KeyError:
+                env: str = 'global'
+            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range'][env]))
         print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range'][func.returnBlockLabel]))
         # print(attributes)
         return attributes[func.ret]['range'][func.returnBlockLabel]
@@ -338,35 +402,149 @@ class RangeAnalyser(object):
             # plt.yticks([])
             # plt.show()
         return graph
+    
+    @staticmethod
+    def resolutionLT(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = -inf,
+                          upper = varRange.upper - (1 if varRange.dtype == int else 0),
+                          dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionLE(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = -inf, upper = varRange.upper, dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionGT(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = varRange.lower + (1 if varRange.dtype == int else 0),
+                          upper = +inf,
+                          dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionGE(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = varRange.lower, upper = +inf, dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionEQ(varRange: ValueRange) -> ValueRange:
+        return varRange.copy()
+    
+    @staticmethod
+    def resolutionNE(varRange: ValueRange) -> ValueRange:
+        if varRange.lower == varRange.upper:
+            return IntegerNumberSet.difference(other = varRange)
+        return IntegerNumberSet.asDtype(dtype = varRange.dtype)
 
 
 def main() -> None:
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        # i = 6
+        i = 5
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
         print('file name:', ssaFile)
-        for func in analyser.functions.values():
-            print('function:', func.declaration)
-            print('identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id)
-                                                          for id, dtype in func.localVariables.items())))
-            print('block labels:', func.blockLabels)
-            print('control flow graph:', func.controlFlow)
-            print('data flow:', func.dataFlow)
-            print('constraints:', func.constraints)
-            print('def of variables:', func.defOfVariable)
-            print('use of variables:', func.useOfVariable)
-            print()
-            analyser.analyse(func = func, args = [ValueRange(0, 10, int) for arg in func.args.keys()])
-            print()
+        # for func in analyser.functions.values():
+        #     print('function:', func.declaration)
+        #     print('identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id)
+        #                                                   for id, dtype in func.localVariables.items())))
+        #     print('block labels:', func.blockLabels)
+        #     print('control flow graph:', func.controlFlow)
+        #     print('data flow:', func.dataFlow)
+        #     print('constraints:', func.constraints)
+        #     print('def of variables:', func.defOfVariable)
+        #     print('use of variables:', func.useOfVariable)
+        #     print()
+        #     analyser.analyse(func = func, args = [ValueRange(200, 300, int) for arg in func.args.keys()])
+        #     print()
+        analyser.analyse(func = 'foo', args = 0 * [ValueRange(-inf, +inf, int)])
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
-        # break
+        break
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    test: bool = True
+    if not test:
+        main()
+    else:
+        ssaFile = 'benchmark/t%d.ssa' % 1
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [])
+        print('[100, 100]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 2
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(200, 300, int)])
+        print('[200, 300]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 3
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(0, 10, int), ValueRange(20, 50, int)])
+        print('[20, 50]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 4
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(-inf, +inf, int)])
+        print('[0, +inf]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 5
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [])
+        print('[210, 210]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 6
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(-inf, +inf, int)])
+        print('[-9, 10]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 7
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(-10, 10, int)])
+        print('[16, 30]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 8
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(1, 100, int), ValueRange(-2, 2, int)])
+        print('[-3.2192308, 5.94230769]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 9
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [])
+        print('[9791, 9791]')
+        print()
+        
+        ssaFile = 'benchmark/t%d.ssa' % 10
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        print('file name:', ssaFile)
+        analyser.analyse(func = 'foo', args = [ValueRange(30, 50, int), ValueRange(90, 100, int)])
+        print('[-10, 40]')
+        print()
