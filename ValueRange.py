@@ -1,5 +1,5 @@
 from typing import Type, Union, Sequence, List, Tuple
-from math import inf, isinf, nan, isnan
+from math import inf, isinf, nan, isnan, floor
 
 
 __all__ = ['ValueRange', 'EmptySet', 'IntegerNumberSet', 'RealNumberSet', 'dtypeFromString']
@@ -27,18 +27,27 @@ class BasicValueRange(object):
             raise ValueError
         self.__dtype: Type[dtype] = dtype
         try:
-            try:
-                self.__lower: dtype = dtype(lower)
-            except OverflowError:
-                self.__lower: float = lower
-            try:
-                self.__upper: dtype = dtype(upper)
-            except OverflowError:
-                self.__upper: float = upper
+            if dtype == int:
+                try:
+                    self.__lower: int = floor(lower)
+                except OverflowError:
+                    self.__lower: float = lower
+                try:
+                    self.__upper: int = floor(upper)
+                except OverflowError:
+                    self.__upper: float = upper
+            else:
+                self.__lower: float = float(lower)
+                self.__upper: float = float(upper)
             if self.lower > self.upper \
                     or isnan(lower) or isnan(upper) \
                     or (isinf(lower) and isinf(upper) and lower == upper):
                 self.__lower, self.__upper = None, None
+            elif self.dtype == int:
+                if not isinf(lower) and abs(self.lower + 1 - round(lower)) < 1E-6:
+                    self.__lower: int = round(lower)
+                if not isinf(upper) and abs(self.upper + 1 - round(upper)) < 1E-6:
+                    self.__upper: int = round(upper)
         except TypeError:
             self.__lower, self.__upper = None, None
     
@@ -59,20 +68,8 @@ class BasicValueRange(object):
         return self.lower, self.upper
     
     @bound.setter
-    def bound(self, new: Tuple[Union[int, float], Union[int, float]]):
-        try:
-            try:
-                self.__lower: self.dtype = self.dtype(new[0])
-            except OverflowError:
-                self.__lower: float = -inf
-            try:
-                self.__upper: self.dtype = self.dtype(new[1])
-            except OverflowError:
-                self.__upper: float = +inf
-            if self.lower > self.upper:
-                self.__lower, self.__upper = None, None
-        except TypeError:
-            self.__lower, self.__upper = None, None
+    def bound(self, newBound: Tuple[Union[int, float], Union[int, float]]) -> None:
+        self.__lower, self.__upper = BasicValueRange(lower = newBound[0], upper = newBound[1], dtype = self.dtype).bound
     
     def copy(self) -> BasicValueRange:
         return BasicValueRange(lower = self.lower, upper = self.upper, dtype = self.dtype)
@@ -237,6 +234,8 @@ class ValueRange(object):
     
     def isEmptySet(self) -> bool:
         if len(self.valueRanges) == 0 or self.lower is None or self.upper is None:
+            if len(self.valueRanges) > 0:
+                a = 1
             self.valueRanges.clear()
             self.__lower, self.__upper = None, None
             return True
@@ -343,7 +342,7 @@ class ValueRange(object):
         self.__iadd__(other = -other)
     
     def __sub__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> ValueRange:
-        return self + (-other)
+        return self.__add__(other = -other)
     
     def __imul__(self, other: Union[int, float, BasicValueRange, ValueRange]) -> None:
         other: ValueRange = ValueRange.asValueRange(value = other)

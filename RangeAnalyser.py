@@ -342,6 +342,11 @@ class Function(object):
     def parseVariableAssignmentStartWith(id: str, statement: str) -> List[str]:
         return list(map(lambda m: m.group('id'), re.finditer(r'(?P<id>{}(_\d+)?)\s*=[^=]'.format(id), string = statement)))
     
+    @staticmethod
+    def idCompareKey(id_n: str) -> Tuple[str, int]:
+        index = id_n.rfind('_')
+        return id_n[:index], int(id_n[index + 1:])
+    
     def __str__(self) -> str:
         return self.declaration
     
@@ -651,15 +656,18 @@ class RangeAnalyser(object):
                             except KeyError:
                                 pass
                         definitions.append(stmt)
-                    if not oldRange.isEmptySet():
+                    elif not oldRange.isEmptySet():
                         if newRange.lower < oldRange.lower and newRange.upper > oldRange.upper:
-                            attributes[var]['range']: ValueRange = IntegerNumberSet.asDtype(dtype = attributes[var]['dtype'])
+                            newRange: ValueRange = IntegerNumberSet.asDtype(dtype = attributes[var]['dtype'])
                         elif newRange.lower < oldRange.lower:
-                            attributes[var]['range']: ValueRange = ValueRange(lower = -inf, upper = oldRange.upper,
-                                                                              dtype = attributes[var]['dtype'])
+                            newRange: ValueRange = ValueRange(lower = -inf, upper = oldRange.upper,
+                                                              dtype = attributes[var]['dtype'])
                         elif newRange.upper > oldRange.upper:
-                            attributes[var]['range']: ValueRange = ValueRange(lower = oldRange.lower, upper = +inf,
-                                                                              dtype = attributes[var]['dtype'])
+                            newRange: ValueRange = ValueRange(lower = oldRange.lower, upper = +inf,
+                                                              dtype = attributes[var]['dtype'])
+                        else:
+                            newRange: ValueRange = oldRange
+                    attributes[var]['range']: ValueRange = newRange
                     definitions.extend(func.useOfVariable[var])
         
         def doFutureResolution() -> None:
@@ -678,25 +686,19 @@ class RangeAnalyser(object):
             print()
         
         if func.ret is None:
+            print('no return')
             return EmptySet
         attributes: Dict[str, Dict[str, Union[str, ValueRange]]] = dict()
         doWidening()
         doFutureResolution()
         doNarrowing()
-        for var in sorted(attributes.keys()):
-            if attributes[var]['type'] == 'num':
-                continue
+        for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', attributes.keys()), key = Function.idCompareKey):
             print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']))
-        if depth > 0:
-            print('|   ' * (depth + 1))
+        print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range']))
         # print(attributes)
         return attributes[func.ret]['range']
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        def idCompareKey(id_n: str) -> Tuple[str, int]:
-            index = id_n.rfind('_')
-            return id_n[:index], int(id_n[index + 1:])
-        
         graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
@@ -708,11 +710,11 @@ class RangeAnalyser(object):
                 codeSplit[label].append('trueList:  {{{}}}'.format(', '.join(block.trueList)))
                 codeSplit[label].append('falseList: {{{}}}'.format(', '.join(block.falseList)))
                 codeSplit[label].append('nextList:  {{{}}}'.format(', '.join(block.nextList)))
-                codeSplit[label].append('GEN:  {{{}}}'.format(', '.join(sorted(block.GEN, key = idCompareKey))))
-                codeSplit[label].append('KILL: {{{}}}'.format(', '.join(sorted(block.KILL, key = idCompareKey))))
-                codeSplit[label].append('USE:  {{{}}}'.format(', '.join(sorted(block.USE, key = idCompareKey))))
-                codeSplit[label].append('IN:   {{{}}}'.format(', '.join(sorted(block.IN, key = idCompareKey))))
-                codeSplit[label].append('OUT:  {{{}}}'.format(', '.join(sorted(block.OUT, key = idCompareKey))))
+                codeSplit[label].append('GEN:  {{{}}}'.format(', '.join(sorted(block.GEN, key = Function.idCompareKey))))
+                codeSplit[label].append('KILL: {{{}}}'.format(', '.join(sorted(block.KILL, key = Function.idCompareKey))))
+                codeSplit[label].append('USE:  {{{}}}'.format(', '.join(sorted(block.USE, key = Function.idCompareKey))))
+                codeSplit[label].append('IN:   {{{}}}'.format(', '.join(sorted(block.IN, key = Function.idCompareKey))))
+                codeSplit[label].append('OUT:  {{{}}}'.format(', '.join(sorted(block.OUT, key = Function.idCompareKey))))
                 codeSplit[label].insert(-9, '-' * max(map(len, codeSplit[label])))
             nodeLabels: Dict[str, str] = {label: r'{}\l'.format(r'\l'.join(codeSplit[label]))
                                           for label, block in func.blocks.items()}
@@ -853,7 +855,7 @@ class RangeAnalyser(object):
                                                     nbunch.append(newNode)
                                                 for i in range(cons['args'].count(arg)):
                                                     graph.add_edge(newNode, namespace.format(node))
-                                    if arg not in successor.KILL:
+                                    if arg not in successor.KILL and arg not in func.varsFromArg:
                                         successors.update(successor.successors)
             if func.ret is not None:
                 graph.add_node(namespace.format(func.ret), label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
@@ -876,7 +878,7 @@ class RangeAnalyser(object):
 def main() -> None:
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        i = 10
+        # i = 6
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
@@ -889,15 +891,16 @@ def main() -> None:
             print('control flow graph:', func.controlFlow)
             print('data flow:', func.dataFlow)
             print('constraints:', func.constraints)
-            print('defOfVariable:', func.defOfVariable)
-            print('useOfVariable:', func.useOfVariable)
+            print('def of variables:', func.defOfVariable)
+            print('use of variables:', func.useOfVariable)
+            print()
             analyser.analyse(func = func, args = [ValueRange(0, 10, int) for arg in func.args.keys()])
             print()
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
-        break
+        # break
 
 
 if __name__ == '__main__':
