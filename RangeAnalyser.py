@@ -290,46 +290,37 @@ class RangeAnalyser(object):
             for stmt, constraint in func.constraints.items():
                 if constraint['type'] == 'condition':
                     for flag in ('true', 'false'):
-                        traveledBlocks: Set[Block] = set()
-                        successors: Set[Block] = {func.blocks[constraint[flag]]}
-                        while len(successors) > 0:
-                            successor: Block = successors.pop()
-                            if successor in traveledBlocks:
-                                continue
-                            traveledBlocks.add(successor)
+                        for successor in map(func.blocks.get, constraint['{}List'.format(flag)]):
                             for arg in constraint['args']:
                                 if number.fullmatch(string = arg) is not None:
                                     continue
-                                else:
-                                    if arg in successor.USE:
-                                        for cons in successor.constraints.values():
-                                            if cons['stmt'] != stmt and arg in cons['args']:
-                                                node: str = cons['stmt']
-                                                if cons['type'] == 'assignment':
-                                                    node: str = cons['res']
-                                                try:
-                                                    graph.remove_edge(namespace.format(arg), namespace.format(node))
-                                                except KeyError:
-                                                    pass
-                                                newNode: str = namespace.format('({})::{}'.format(cons['stmt'], arg))
-                                                try:
-                                                    graph.get_node(newNode)
-                                                    while True:
-                                                        try:
-                                                            graph.remove_edge(newNode, namespace.format(node))
-                                                        except KeyError:
-                                                            break
-                                                except KeyError:
-                                                    graph.add_node(newNode, label = None, shape = 'point', width = 0.0)
-                                                    graph.add_edge(namespace.format(stmt), newNode, label = flag[0].upper(),
-                                                                   dir = 'none', style = 'dashed',
-                                                                   fontname = 'Menlo bold', fontcolor = 'deeppink')
-                                                    graph.add_edge(namespace.format(arg), newNode, dir = 'none')
-                                                    nbunch.append(newNode)
-                                                for i in range(cons['args'].count(arg)):
-                                                    graph.add_edge(newNode, namespace.format(node))
-                                    if arg not in successor.KILL and arg not in func.varsFromArg:
-                                        successors.update(successor.successors)
+                                elif arg in successor.USE:
+                                    for cons in successor.constraints.values():
+                                        if cons['stmt'] != stmt and arg in cons['args']:
+                                            node: str = cons['stmt']
+                                            if cons['type'] == 'assignment':
+                                                node: str = cons['res']
+                                            try:
+                                                graph.remove_edge(namespace.format(arg), namespace.format(node))
+                                            except KeyError:
+                                                pass
+                                            newNode: str = namespace.format('({})::{}'.format(cons['stmt'], arg))
+                                            try:
+                                                graph.get_node(newNode)
+                                                while True:
+                                                    try:
+                                                        graph.remove_edge(newNode, namespace.format(node))
+                                                    except KeyError:
+                                                        break
+                                            except KeyError:
+                                                graph.add_node(newNode, label = None, shape = 'point', width = 0.0)
+                                                graph.add_edge(namespace.format(stmt), newNode, label = flag[0].upper(),
+                                                               dir = 'none', style = 'dashed',
+                                                               fontname = 'Menlo bold', fontcolor = 'deeppink')
+                                                graph.add_edge(namespace.format(arg), newNode, dir = 'none')
+                                                nbunch.append(newNode)
+                                            for i in range(cons['args'].count(arg)):
+                                                graph.add_edge(newNode, namespace.format(node))
             if func.ret is not None:
                 graph.add_node(namespace.format(func.ret), label = 'ret: {}'.format(func.ret), style = 'bold', color = 'dodgerblue')
                 nbunch.append(namespace.format(func.ret))

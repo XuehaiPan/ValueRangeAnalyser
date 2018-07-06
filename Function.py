@@ -445,13 +445,14 @@ class Block(object):
                                                  'args': [matcher.group('arg1'), matcher.group('arg2')],
                                                  'true': gotoStatement.fullmatch(string = self.codeSplit[i + 1]).group('label'),
                                                  'false': gotoStatement.fullmatch(string = self.codeSplit[i + 3]).group('label')}
-                            # trueList: List[str] = [constraints[stmt]['true']]
-                            # falseList: List[str] = [constraints[stmt]['false']]
-                            # for arg in constraints[stmt]['args']:
-                            #     if number.fullmatch(string = arg) is None:
-                            #         trueList.extend(self.function.successorLabelsWithoutKilling(block = trueList[0], var = arg))
-                            #         falseList.extend(self.function.successorLabelsWithoutKilling(block = falseList[0], var = arg))
-                    continue
+                            trueList: List[str] = [constraints[stmt]['true']]
+                            falseList: List[str] = [constraints[stmt]['false']]
+                            for arg in constraints[stmt]['args']:
+                                if number.fullmatch(string = arg) is None:
+                                    trueList.extend(self.function.successorLabelsWithoutKilling(block = trueList[0], var = arg))
+                                    falseList.extend(self.function.successorLabelsWithoutKilling(block = falseList[0], var = arg))
+                            constraints[stmt]['trueList']: List[str] = trueList
+                            constraints[stmt]['falseList']: List[str] = falseList
                 elif phiStatement.fullmatch(string = stmt) is not None:
                     matcher: Match = phiStatement.fullmatch(string = stmt)
                     stmt: str = '# {} = PHI <{}, {}>'.format(matcher.group('res'), matcher.group('arg1'), matcher.group('arg2'))
