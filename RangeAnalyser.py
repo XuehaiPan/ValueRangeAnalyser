@@ -1,8 +1,9 @@
 import re
 import os
-from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
-from collections import OrderedDict
+from typing import Type, Union, Optional, List, Tuple, Sequence, Set, Dict, Deque, Pattern, Match
+from collections import OrderedDict, deque
 import pygraphviz as pgv
+from math import inf, isinf, nan, isnan
 from ValueRange import ValueRange, EmptySet, IntegerNumberSet, RealNumberSet, dtypeFromString
 
 
@@ -52,8 +53,9 @@ for op in binocularOperators:
     operations[op]: Pattern = re.compile(r'^\s*(?P<arg1>{})\s+(?P<op>{})\s+(?P<arg2>{})\s*$'.format(factorPattern,
                                                                                                     opPattern,
                                                                                                     factorPattern))
+    del opPattern
 
-del varPattern, numPattern, factorPattern, var1Pattern, var2Pattern, num1Pattern, num2Pattern, opPattern
+del varPattern, numPattern, factorPattern, var1Pattern, var2Pattern, num1Pattern, num2Pattern
 
 
 def formatCode(statements: List[str]) -> List[str]:
@@ -113,8 +115,8 @@ class Function(object):
             self.__prototype: str = '{}({})'.format(self.name, ', '.join(self.args.values()))
             self.__variables: Dict[str, str] = Function.parseVariableDeclaration(statement = code)
             self.__localVariables: Dict[str, str] = Function.parseVariableDeclaration(statement = self.body)
-            self.__GEN: Set[str] = Function.parseVariableAssignment(statement = self.body)
-            self.__GEN.update(self.varsFromArg)
+            self.__GEN: List[str] = list(self.varsFromArg)
+            self.__GEN.extend(Function.parseVariableAssignment(statement = self.body))
             self.__blockLabels: List[str] = None
             self.__blocks: Dict[str, Block] = None
             self.__controlFlow: Dict[str, Dict[str, Set[str]]] = None
@@ -176,7 +178,7 @@ class Function(object):
         return self.__localVariables
     
     @property
-    def GEN(self) -> Set[str]:
+    def GEN(self) -> List[str]:
         return self.__GEN
     
     @property
@@ -242,8 +244,9 @@ class Function(object):
     @property
     def dataFlow(self) -> Dict[str, Dict[str, Set[str]]]:
         if self.__dataFlow is None:
-            self.__dataFlow: Dict[str, Dict[str, Set[str]]] = {label: {'IN': set(), 'OUT': set()}
-                                                               for label in self.blockLabels}
+            self.__dataFlow: Dict[str, Dict[str, Set[str]]] = {block.label: {'IN': set(), 'OUT': set(), 'USE': block.USE,
+                                                                             'GEN': block.GEN, 'KILL': block.KILL}
+                                                               for block in self.blocks.values()}
             changed: Set[Block] = set(self.blocks.values())
             while len(changed) > 0:
                 block: Block = changed.pop()
@@ -332,12 +335,12 @@ class Function(object):
         return identifiers
     
     @staticmethod
-    def parseVariableAssignment(statement: str) -> Set[str]:
-        return set(map(lambda m: m.group('id'), re.finditer(r'(?P<id>\w*_\d+)\s*=[^=]', string = statement)))
+    def parseVariableAssignment(statement: str) -> List[str]:
+        return list(map(lambda m: m.group('id'), re.finditer(r'(?P<id>\w*_\d+)\s*=[^=]', string = statement)))
     
     @staticmethod
-    def parseVariableAssignmentStartWith(id: str, statement: str) -> Set[str]:
-        return set(map(lambda m: m.group('id'), re.finditer(r'(?P<id>{}(_\d+)?)\s*=[^=]'.format(id), string = statement)))
+    def parseVariableAssignmentStartWith(id: str, statement: str) -> List[str]:
+        return list(map(lambda m: m.group('id'), re.finditer(r'(?P<id>{}(_\d+)?)\s*=[^=]'.format(id), string = statement)))
     
     def __str__(self) -> str:
         return self.declaration
@@ -351,7 +354,7 @@ class Block(object):
         self.__label: str = label
         self.__codeSplit: List[str] = list(codeSplit)
         self.__code: str = '\n'.join(self.codeSplit)
-        self.__GEN: Set[str] = Function.parseVariableAssignment(statement = self.code)
+        self.__GEN: Set[str] = set(Function.parseVariableAssignment(statement = self.code))
         self.__KILL: Set[str] = set()
         for id in self.function.variables.keys():
             if len(Function.parseVariableAssignmentStartWith(id = id, statement = self.code)) > 0:
@@ -565,40 +568,103 @@ class RangeAnalyser(object):
     def functionNames(self) -> List[str]:
         return self.__functionNames
     
-    def analyse(self, func: Union[str, Function], args: Dict[str, ValueRange] = None) -> ValueRange:
+    def analyse(self, func: Union[str, Function], args: Sequence[ValueRange], depth: int = 0) -> ValueRange:
+        def execute(stmt: str) -> ValueRange:
+            constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+            resRange: ValueRange = EmptySet
+            if constraint['type'] == 'funcCall':
+                print('>' * (4 * depth + 3), 'call', self.functions[constraint['op']].declaration)
+                resRange: ValueRange = self.analyse(func = constraint['op'],
+                                                    args = list(attributes[arg]['range'] for arg in constraint['args']),
+                                                    depth = depth + 1)
+            elif constraint['type'] != 'condition':
+                arg1Range: ValueRange = attributes[constraint['arg1']]['range']
+                if constraint['type'] == 'assignment':
+                    resRange: ValueRange = arg1Range
+                elif constraint['type'] == 'monocular':
+                    if constraint['op'] == 'minus':
+                        resRange: ValueRange = -arg1Range
+                    elif constraint['op'] == '(int)':
+                        resRange: ValueRange = arg1Range.asDtype(dtype = int)
+                    elif constraint['op'] == '(float)':
+                        resRange: ValueRange = arg1Range.asDtype(dtype = float)
+                else:
+                    arg2Range: ValueRange = attributes[constraint['arg2']]['range']
+                    if constraint['type'] == 'PHI':
+                        resRange: ValueRange = arg1Range.union(other = arg2Range)
+                    elif constraint['type'] == 'arithmetic':
+                        if constraint['op'] == '+':
+                            resRange: ValueRange = arg1Range + arg2Range
+                        elif constraint['op'] == '-':
+                            resRange: ValueRange = arg1Range - arg2Range
+                        elif constraint['op'] == '*':
+                            resRange: ValueRange = arg1Range * arg2Range
+                        elif constraint['op'] == '/':
+                            resRange: ValueRange = arg1Range / arg2Range
+            attributes[constraint['res']]['range']: ValueRange = resRange
+            return resRange
+        
         def doWidening() -> None:
             for constraint in func.constraints.values():
                 try:
-                    attr[constraint['res']]: Union[str, ValueRange] = {'type': 'var',
-                                                                       'dtype': None,
-                                                                       'range': EmptySet}
+                    attributes[constraint['res']]: Union[str, ValueRange] = {'type': 'var',
+                                                                             'dtype': None,
+                                                                             'range': EmptySet}
                 except KeyError:
                     pass
                 for arg in constraint['args']:
                     if number.fullmatch(string = arg):
                         num: Union[int, float] = (int(arg) if integer.fullmatch(string = arg) else float(arg))
-                        attr[arg]: Union[str, ValueRange] = {'type': 'num',
-                                                             'dtype': type(num),
-                                                             'range': ValueRange.asValueRange(value = num)}
+                        attributes[arg]: Union[str, ValueRange] = {'type': 'num',
+                                                                   'dtype': type(num).__name__,
+                                                                   'range': ValueRange.asValueRange(value = num)}
                     else:
-                        attr[arg]: Union[str, ValueRange] = {'type': 'var',
-                                                             'dtype': None,
-                                                             'range': EmptySet}
+                        attributes[arg]: Union[str, ValueRange] = {'type': 'var',
+                                                                   'dtype': None,
+                                                                   'range': EmptySet}
             for id, dtype in func.variables.items():
-                for var in attr.keys():
+                for var in attributes.keys():
                     if var.startswith(id):
-                        attr[var]['dtype']: str = dtype
-            for arg in func.args.keys():
+                        attributes[var]['dtype']: str = dtype
+            for i, arg in enumerate(func.args.keys()):
                 for var in func.varsFromArg:
                     if var.startswith(arg):
-                        attr[var]['type']: str = 'arg'
-                        attr[var]['dtype']: str = func.args[arg]
-                        attr[var]['range']: ValueRange = args[arg].asDtype(dtype = attr[var]['dtype'])
-            # changed: bool = True
-            # while changed:
-            #     changed: bool = False
-            #     for var in attr:
-            #         pass
+                        attributes[var]['type']: str = 'arg'
+                        attributes[var]['dtype']: str = func.args[arg]
+                        attributes[var]['range']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
+            definitions: Deque[str] = deque()
+            for stmts in func.defOfVariable.values():
+                definitions.extend(stmts)
+            while len(definitions) > 0:
+                stmt: str = definitions.popleft()
+                try:
+                    var: str = func.constraints[stmt]['res']
+                except KeyError:
+                    continue
+                if attributes[var]['type'] != 'var':
+                    continue
+                oldRange: ValueRange = attributes[var]['range']
+                newRange: ValueRange = execute(stmt = func.defOfVariable[var][0])
+                if newRange.isEmptySet():
+                    for arg in func.constraints[stmt]['args']:
+                        try:
+                            definitions.extend(func.defOfVariable[arg])
+                        except KeyError:
+                            pass
+                    definitions.append(stmt)
+                    continue
+                if oldRange.isEmptySet():
+                    continue
+                if newRange.lower < oldRange.lower or newRange.upper > oldRange.upper:
+                    if newRange.lower < oldRange.lower and newRange.upper > oldRange.upper:
+                        attributes[var]['range']: ValueRange = IntegerNumberSet.asDtype(dtype = attributes[var]['dtype'])
+                    elif newRange.lower < oldRange.lower:
+                        attributes[var]['range']: ValueRange = ValueRange(lower = -inf, upper = oldRange.upper,
+                                                                          dtype = attributes[var]['dtype'])
+                    else:
+                        attributes[var]['range']: ValueRange = ValueRange(lower = oldRange.lower, upper = +inf,
+                                                                          dtype = attributes[var]['dtype'])
+                    definitions.extend(func.useOfVariable[var])
         
         def doFutureResolution() -> None:
             pass
@@ -609,16 +675,26 @@ class RangeAnalyser(object):
         if isinstance(func, Function):
             func: str = func.name
         func: Function = self.functions[func]
+        print('{}analyse {}'.format('|   ' * depth, func.declaration), end = '')
+        if len(func.args) > 0:
+            print(' for {', ', '.join('{} in {}'.format(arg, args[i]) for i, arg in enumerate(func.args.keys())), '}')
+        else:
+            print()
         
-        attr: Dict[str, Dict[str, Union[str, ValueRange]]] = dict()
+        if func.ret is None:
+            return EmptySet
+        attributes: Dict[str, Dict[str, Union[str, ValueRange]]] = dict()
         doWidening()
         doFutureResolution()
         doNarrowing()
-        print(attr)
-        try:
-            return attr[func.ret]['range']
-        except KeyError:
-            return EmptySet
+        for var in sorted(attributes.keys()):
+            if attributes[var]['type'] == 'num':
+                continue
+            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']))
+        if depth > 0:
+            print('|   ' * (depth + 1))
+        # print(attributes)
+        return attributes[func.ret]['range']
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
         def idCompareKey(id_n: str) -> Tuple[str, int]:
@@ -804,22 +880,22 @@ class RangeAnalyser(object):
 def main() -> None:
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        # i = 9
+        # i = 7
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
         print('file name:', ssaFile)
         for func in analyser.functions.values():
             print('function:', func.declaration)
-            print('identifiers:', '({})'.format(', '.join('{} {}'.format(type, id)
-                                                          for id, type in func.localVariables.items())))
+            print('identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id)
+                                                          for id, dtype in func.localVariables.items())))
             print('block labels:', func.blockLabels)
             print('control flow graph:', func.controlFlow)
             print('data flow:', func.dataFlow)
             print('constraints:', func.constraints)
             print('defOfVariable:', func.defOfVariable)
             print('useOfVariable:', func.useOfVariable)
-            analyser.analyse(func = func, args = {arg: EmptySet for arg in func.args.keys()})
+            analyser.analyse(func = func, args = [RealNumberSet for arg in func.args.keys()])
             print()
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
