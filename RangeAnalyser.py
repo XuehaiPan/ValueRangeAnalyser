@@ -124,7 +124,7 @@ class Function(object):
             self.__constraints: Dict[str, Dict[str, Union[str, List[str]]]] = None
             self.__dominantBlockLabelsOf: Dict[str, Set[str]] = None
             self.__dominantBlockLabelsBy: Dict[str, Set[str]] = None
-            self.__defOfVariable: Dict[str, List[str]] = None
+            self.__defOfVariable: Dict[str, str] = None
             self.__useOfVariable: Dict[str, List[str]] = None
         else:
             raise ValueError
@@ -182,7 +182,7 @@ class Function(object):
         return self.__GEN
     
     @property
-    def defOfVariable(self) -> Dict[str, List[str]]:
+    def defOfVariable(self) -> Dict[str, str]:
         if self.__defOfVariable is None:
             _ = self.useOfVariable
         return self.__defOfVariable
@@ -191,10 +191,10 @@ class Function(object):
     def useOfVariable(self) -> Dict[str, List[str]]:
         if self.__useOfVariable is None:
             self.__useOfVariable: Dict[str, List[str]] = {var: list() for var in self.GEN}
-            self.__defOfVariable: Dict[str, List[str]] = {var: list() for var in self.GEN}
+            self.__defOfVariable: Dict[str, str] = {var: None for var in self.GEN}
             for stmt, constraint in self.constraints.items():
                 try:
-                    self.__defOfVariable[constraint['res']].append(stmt)
+                    self.__defOfVariable[constraint['res']]: str = stmt
                 except KeyError:
                     pass
                 for arg in constraint['args']:
@@ -632,9 +632,7 @@ class RangeAnalyser(object):
                         attributes[var]['type']: str = 'arg'
                         attributes[var]['dtype']: str = func.args[arg]
                         attributes[var]['range']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
-            definitions: Deque[str] = deque()
-            for stmts in func.defOfVariable.values():
-                definitions.extend(stmts)
+            definitions: Deque[str] = deque(filter(None, func.defOfVariable.values()))
             while len(definitions) > 0:
                 stmt: str = definitions.popleft()
                 try:
@@ -644,26 +642,24 @@ class RangeAnalyser(object):
                 if attributes[var]['type'] != 'var':
                     continue
                 oldRange: ValueRange = attributes[var]['range']
-                newRange: ValueRange = execute(stmt = func.defOfVariable[var][0])
-                if newRange.isEmptySet():
-                    for arg in func.constraints[stmt]['args']:
-                        try:
-                            definitions.extend(func.defOfVariable[arg])
-                        except KeyError:
-                            pass
-                    definitions.append(stmt)
-                    continue
-                if oldRange.isEmptySet():
-                    continue
-                if newRange.lower < oldRange.lower or newRange.upper > oldRange.upper:
-                    if newRange.lower < oldRange.lower and newRange.upper > oldRange.upper:
-                        attributes[var]['range']: ValueRange = IntegerNumberSet.asDtype(dtype = attributes[var]['dtype'])
-                    elif newRange.lower < oldRange.lower:
-                        attributes[var]['range']: ValueRange = ValueRange(lower = -inf, upper = oldRange.upper,
-                                                                          dtype = attributes[var]['dtype'])
-                    else:
-                        attributes[var]['range']: ValueRange = ValueRange(lower = oldRange.lower, upper = +inf,
-                                                                          dtype = attributes[var]['dtype'])
+                newRange: ValueRange = execute(stmt = func.defOfVariable[var])
+                if newRange != oldRange:
+                    if newRange.isEmptySet():
+                        for arg in func.constraints[stmt]['args']:
+                            try:
+                                definitions.extend(func.defOfVariable[arg])
+                            except KeyError:
+                                pass
+                        definitions.append(stmt)
+                    if not oldRange.isEmptySet():
+                        if newRange.lower < oldRange.lower and newRange.upper > oldRange.upper:
+                            attributes[var]['range']: ValueRange = IntegerNumberSet.asDtype(dtype = attributes[var]['dtype'])
+                        elif newRange.lower < oldRange.lower:
+                            attributes[var]['range']: ValueRange = ValueRange(lower = -inf, upper = oldRange.upper,
+                                                                              dtype = attributes[var]['dtype'])
+                        elif newRange.upper > oldRange.upper:
+                            attributes[var]['range']: ValueRange = ValueRange(lower = oldRange.lower, upper = +inf,
+                                                                              dtype = attributes[var]['dtype'])
                     definitions.extend(func.useOfVariable[var])
         
         def doFutureResolution() -> None:
@@ -880,7 +876,7 @@ class RangeAnalyser(object):
 def main() -> None:
     # ssaFile: str = input('Input the name of the SSA form file: ')
     for i in range(1, 11):
-        # i = 7
+        i = 10
         ssaFile = 'benchmark/t%d.ssa' % i
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
@@ -895,13 +891,13 @@ def main() -> None:
             print('constraints:', func.constraints)
             print('defOfVariable:', func.defOfVariable)
             print('useOfVariable:', func.useOfVariable)
-            analyser.analyse(func = func, args = [RealNumberSet for arg in func.args.keys()])
+            analyser.analyse(func = func, args = [ValueRange(0, 10, int) for arg in func.args.keys()])
             print()
         print()
         analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
         analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
-        # break
+        break
 
 
 if __name__ == '__main__':
