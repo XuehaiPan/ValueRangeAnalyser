@@ -170,9 +170,9 @@ class RangeAnalyser(object):
         doNarrowing()
         for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', attributes.keys()), key = Function.idCompareKey):
             print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range']['global']))
-        print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range']))
+        print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range'][func.returnBlockLabel]))
         # print(attributes)
-        return attributes[func.ret]['range'][func.blockLabels[-1]]
+        return attributes[func.ret]['range'][func.returnBlockLabel]
     
     def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
         graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')

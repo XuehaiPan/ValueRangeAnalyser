@@ -234,13 +234,17 @@ class ValueRange(object):
     
     def isEmptySet(self) -> bool:
         if len(self.valueRanges) == 0 or self.lower is None or self.upper is None:
-            if len(self.valueRanges) > 0:
-                a = 1
             self.valueRanges.clear()
             self.__lower, self.__upper = None, None
             return True
         else:
             return False
+    
+    def isIntegerNumberSet(self) -> bool:
+        return len(self.valueRanges) == 1 and isinf(self.lower) and isinf(self.upper) and self.dtype == int
+    
+    def isRealNumberSet(self) -> bool:
+        return len(self.valueRanges) == 1 and isinf(self.lower) and isinf(self.upper) and self.dtype == float
     
     def addValueRange(self, subset: BasicValueRange) -> None:
         if not subset.isEmptySet():
@@ -268,7 +272,7 @@ class ValueRange(object):
     def difference(self, other: ValueRange) -> ValueRange:
         diffValueRanges: List[BasicValueRange] = list()
         dtype: Type[float] = float
-        if self.dtype == int and other.dtype == int:
+        if (self.dtype == int or self.isRealNumberSet()) and other.dtype == int:
             dtype: Type[int] = int
         valueRanges: List[BasicValueRange] = list(valueRange.asDtype(dtype = dtype) for valueRange in self.valueRanges)
         for valueRange in valueRanges:
@@ -429,6 +433,8 @@ class ValueRange(object):
         else:
             return ' U '.join(map(str, self.valueRanges))
     
+    __repr__ = __str__
+    
     @staticmethod
     def asValueRange(value: Union[int, float, BasicValueRange, ValueRange]) -> ValueRange:
         if not isinstance(value, ValueRange):
@@ -442,8 +448,6 @@ class ValueRange(object):
                 raise ValueError
         else:
             return value
-    
-    __repr__ = __str__
 
 
 EmptySet: ValueRange = ValueRange(lower = None, upper = None, dtype = int)
