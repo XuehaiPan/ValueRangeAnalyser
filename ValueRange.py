@@ -1,5 +1,5 @@
 from math import inf, isinf, isnan, floor
-from typing import Type, Union, Sequence, List, Tuple
+from typing import Type, Union, Sequence, List, Tuple, Callable
 
 
 __all__: List[str] = ['ValueRange', 'EmptySet', 'IntegerNumberSet', 'RealNumberSet', 'dtypeFromString']
@@ -145,7 +145,7 @@ class BasicValueRange(object):
             else:
                 return '[{}, {}]'.format(self.lower, self.upper)
     
-    __repr__ = __str__
+    __repr__: Callable[[BasicValueRange], str] = __str__
 
 
 class ValueRange(object):
@@ -431,7 +431,7 @@ class ValueRange(object):
         else:
             return ' U '.join(map(str, self.valueRanges))
     
-    __repr__ = __str__
+    __repr__: Callable[[ValueRange], str] = __str__
     
     @staticmethod
     def asValueRange(value: Union[int, float, BasicValueRange, ValueRange]) -> ValueRange:
@@ -451,42 +451,3 @@ class ValueRange(object):
 EmptySet: ValueRange = ValueRange(lower = None, upper = None, dtype = int)
 IntegerNumberSet: ValueRange = ValueRange(lower = -inf, upper = +inf, dtype = int)
 RealNumberSet: ValueRange = ValueRange(lower = -inf, upper = +inf, dtype = float)
-
-if __name__ == '__main__':
-    print('test ValueRange:')
-    s1 = BasicValueRange(10, +inf, int)
-    s2 = BasicValueRange(2, 3, int)
-    s3 = BasicValueRange(4, 5, int)
-    s4 = BasicValueRange(6.5, 10, int)
-    s5 = ValueRange([s1, s2, s3, s4])
-    s6 = ValueRange(-inf, 7, int)
-    print('s1:', s1)
-    print('s2:', s2)
-    print('s3:', s3)
-    print('s4:', s4)
-    print('s5:', s5)
-    print('s6:', s6)
-    print('union(s5, s6):', s5.union(s6))
-    print('difference(s5, s6):', s5.difference(s6))
-    print('intersection(s5, s6):', s5.intersection(s6))
-    print('symmetricDifference(s5, s6):', s5.symmetricDifference(s6))
-    print()
-    s1 = BasicValueRange(10, 10, float)
-    s2 = BasicValueRange(2, 3, float)
-    s3 = BasicValueRange(4, 5, float)
-    s4 = BasicValueRange(6.5, 10, float)
-    s5 = ValueRange([s1, s2, s3, s4])
-    s6 = ValueRange(-inf, 7, int)
-    print('s1:', s1)
-    print('s2:', s2)
-    print('s3:', s3)
-    print('s4:', s4)
-    print('s5:', s5)
-    print('s6:', s6)
-    print('union(s5, s6):', s5.union(s6))
-    print('difference(s5, s6):', s5.difference(s6))
-    print('intersection(s5, s6):', s5.intersection(s6))
-    print('symmetricDifference(s5, s6):', s5.symmetricDifference(s6))
-    print(ValueRange())
-    print(RealNumberSet)
-    print(s5 / s6)

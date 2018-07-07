@@ -1,6 +1,6 @@
 import re
 from collections import OrderedDict
-from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
+from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match, Callable
 
 
 __all__: List[str] = ['Function', 'Block',
@@ -60,6 +60,7 @@ for op in binocularOperators:
 del varPattern, numPattern, factorPattern, var1Pattern, var2Pattern, num1Pattern, num2Pattern
 
 Block: Type = type('Block', (object,), dict())
+Function: Type = type('Function', (object,), dict())
 
 
 class Function(object):
@@ -352,7 +353,7 @@ class Function(object):
     def __str__(self) -> str:
         return self.declaration
     
-    __repr__ = __str__
+    __repr__: Callable[[Function], str] = __str__
 
 
 class Block(object):
@@ -575,4 +576,4 @@ class Block(object):
     def __str__(self) -> str:
         return self.label
     
-    __repr__ = __str__
+    __repr__: Callable[[Block], str] = __str__

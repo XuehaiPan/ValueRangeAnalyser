@@ -1,9 +1,7 @@
 import re
 from collections import OrderedDict, deque
 from math import inf
-from typing import Union, List, Sequence, Dict, Deque
-
-import pygraphviz as pgv
+from typing import Union, List, Sequence, Dict, Deque, Callable
 
 from Function import Function, functionImplementation, number, integer
 from ValueRange import ValueRange, EmptySet, IntegerNumberSet
@@ -194,25 +192,23 @@ class RangeAnalyser(object):
                 resolutions[stmt] = {arg1: arg1Resolution, arg2: arg2Resolution}
         
         def doNarrowing() -> None:
-            pass
-            for i in range(5):
-                for stmt in resolutions.keys():
-                    constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+            for stmt in resolutions.keys():
+                constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+                env: str = constraint['blockLabel']
+                for var, resolution in resolutions[stmt].items():
+                    if attributes[var]['type'] != 'num':
+                        varRange: ValueRange = attributes[var]['range'][env]
+                        for flag in ('true', 'false'):
+                            for blockLabel in constraint['{}List'.format(flag)]:
+                                attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
+            for stmt, constraint in func.constraints.items():
+                if constraint['type'] != 'condition':
+                    res: str = constraint['res']
                     env: str = constraint['blockLabel']
-                    for var, resolution in resolutions[stmt].items():
-                        if attributes[var]['type'] != 'num':
-                            varRange: ValueRange = attributes[var]['range'][env]
-                            for flag in ('true', 'false'):
-                                for blockLabel in constraint['{}List'.format(flag)]:
-                                    attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
-                for stmt, constraint in func.constraints.items():
-                    if constraint['type'] != 'condition':
-                        res: str = constraint['res']
-                        env: str = constraint['blockLabel']
-                        resRange: ValueRange = execute(stmt = stmt, env = env)
-                        for successor in func.successorsOf(block = env):
-                            if res in successor.IN:
-                                attributes[res]['range'][successor.label]: ValueRange = resRange
+                    resRange: ValueRange = execute(stmt = stmt, env = env)
+                    for successor in func.successorsOf(block = env):
+                        if res in successor.IN:
+                            attributes[res]['range'][successor.label]: ValueRange = resRange
         
         if isinstance(func, Function):
             func: str = func.name
@@ -229,9 +225,8 @@ class RangeAnalyser(object):
         attributes: Dict[str, Dict[str, Union[str, Dict[str, ValueRange]]]] = dict()
         resolutions: Dict[str, Dict[str, Dict[str, ValueRange]]] = dict()
         doWidening()
-        for i in range(5):
-            doFutureResolution()
-            doNarrowing()
+        doFutureResolution()
+        doNarrowing()
         for block in func.blocks.values():
             env: str = block.label
             print('{}{}:'.format('|   ' * (depth + 1), env))
@@ -242,16 +237,53 @@ class RangeAnalyser(object):
                 var: str = func.ret
                 print('{}{} {}: {}'.format('|   ' * (depth + 2), attributes[var]['dtype'], var, attributes[var]['range'][env]))
         print('{}{} returns {}'.format('|   ' * depth, func.prototype, attributes[func.ret]['range'][func.returnBlockLabel]))
-        # print(attributes)
         return attributes[func.ret]['range'][func.returnBlockLabel]
     
-    def drawControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
+    drawControlFlowGraph = None
+    drawSimpleControlFlowGraph = None
+    drawConstraintGraph = None
+    
+    @staticmethod
+    def resolutionLT(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = -inf,
+                          upper = varRange.upper - (1 if varRange.dtype == int else 0),
+                          dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionLE(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = -inf, upper = varRange.upper, dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionGT(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = varRange.lower + (1 if varRange.dtype == int else 0),
+                          upper = +inf,
+                          dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionGE(varRange: ValueRange) -> ValueRange:
+        return ValueRange(lower = varRange.lower, upper = +inf, dtype = varRange.dtype)
+    
+    @staticmethod
+    def resolutionEQ(varRange: ValueRange) -> ValueRange:
+        return varRange.copy()
+    
+    @staticmethod
+    def resolutionNE(varRange: ValueRange) -> ValueRange:
+        if varRange.lower == varRange.upper:
+            return IntegerNumberSet.difference(other = varRange)
+        return IntegerNumberSet.asDtype(dtype = varRange.dtype)
+
+
+try:
+    from pygraphviz import AGraph
+    
+    
+    def drawControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+        graph: AGraph = AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             namespace: str = '{}::{{}}'.format(func.name)
-            codeSplit: Dict[str, List[str]] = {label: ['{}:'.format(label)] + block.codeSplit
-                                               for label, block in func.blocks.items()}
+            codeSplit: Dict[str, List[str]] = {label: ['{}:'.format(label)] + block.codeSplit for label, block in func.blocks.items()}
             for label, block in func.blocks.items():
                 codeSplit[label].append('transferCondition: {}'.format(block.transferCondition))
                 codeSplit[label].append('trueList:  {{{}}}'.format(', '.join(block.trueList)))
@@ -263,8 +295,7 @@ class RangeAnalyser(object):
                 codeSplit[label].append('IN:   {{{}}}'.format(', '.join(sorted(block.IN, key = Function.idCompareKey))))
                 codeSplit[label].append('OUT:  {{{}}}'.format(', '.join(sorted(block.OUT, key = Function.idCompareKey))))
                 codeSplit[label].insert(-9, '-' * max(map(len, codeSplit[label])))
-            nodeLabels: Dict[str, str] = {label: r'{}\l'.format(r'\l'.join(codeSplit[label]))
-                                          for label, block in func.blocks.items()}
+            nodeLabels: Dict[str, str] = {label: r'{}\l'.format(r'\l'.join(codeSplit[label])) for label, block in func.blocks.items()}
             graph.add_node(namespace.format('entry'), label = 'entry', style = 'bold', shape = 'ellipse')
             graph.add_node(namespace.format('exit'), label = 'exit', style = 'bold', shape = 'ellipse')
             for block in func.blocks.values():
@@ -280,15 +311,11 @@ class RangeAnalyser(object):
                                style = 'dashed', fontname = 'Menlo bold')
         if file is not None:
             graph.draw(path = file, prog = 'dot')
-            # from matplotlib import pyplot as plt
-            # plt.imshow(plt.imread(fname = file))
-            # plt.xticks([])
-            # plt.yticks([])
-            # plt.show()
         return graph
     
-    def drawSimpleControlFlowGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, overlap = False, compound = True, layout = 'dot')
+    
+    def drawSimpleControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+        graph: AGraph = AGraph(directed = True, strict = False, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             for prefix in ('', 'dominant::'):
@@ -315,15 +342,11 @@ class RangeAnalyser(object):
                                    style = 'dashed', fontname = 'Menlo bold')
         if file is not None:
             graph.draw(path = file, prog = 'dot')
-            # from matplotlib import pyplot as plt
-            # plt.imshow(plt.imread(fname = file))
-            # plt.xticks([])
-            # plt.yticks([])
-            # plt.show()
         return graph
     
-    def drawConstraintGraph(self, file: str = None) -> pgv.AGraph:
-        graph: pgv.AGraph = pgv.AGraph(directed = True, strict = False, overlap = True, layout = 'dot')
+    
+    def drawConstraintGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+        graph: AGraph = AGraph(directed = True, strict = False, overlap = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
             namespace: str = '{}::{{}}'.format(func.name)
@@ -403,39 +426,13 @@ class RangeAnalyser(object):
                                style = 'dashed', fontname = 'Menlo bold')
         if file is not None:
             graph.draw(path = file, prog = 'dot')
-            # from matplotlib import pyplot as plt
-            # plt.imshow(plt.imread(fname = file))
-            # plt.xticks([])
-            # plt.yticks([])
-            # plt.show()
         return graph
     
-    @staticmethod
-    def resolutionLT(varRange: ValueRange) -> ValueRange:
-        return ValueRange(lower = -inf,
-                          upper = varRange.upper - (1 if varRange.dtype == int else 0),
-                          dtype = varRange.dtype)
     
-    @staticmethod
-    def resolutionLE(varRange: ValueRange) -> ValueRange:
-        return ValueRange(lower = -inf, upper = varRange.upper, dtype = varRange.dtype)
-    
-    @staticmethod
-    def resolutionGT(varRange: ValueRange) -> ValueRange:
-        return ValueRange(lower = varRange.lower + (1 if varRange.dtype == int else 0),
-                          upper = +inf,
-                          dtype = varRange.dtype)
-    
-    @staticmethod
-    def resolutionGE(varRange: ValueRange) -> ValueRange:
-        return ValueRange(lower = varRange.lower, upper = +inf, dtype = varRange.dtype)
-    
-    @staticmethod
-    def resolutionEQ(varRange: ValueRange) -> ValueRange:
-        return varRange.copy()
-    
-    @staticmethod
-    def resolutionNE(varRange: ValueRange) -> ValueRange:
-        if varRange.lower == varRange.upper:
-            return IntegerNumberSet.difference(other = varRange)
-        return IntegerNumberSet.asDtype(dtype = varRange.dtype)
+    RangeAnalyser.drawControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawControlFlowGraph
+    RangeAnalyser.drawSimpleControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawSimpleControlFlowGraph
+    RangeAnalyser.drawConstraintGraph: Callable[[RangeAnalyser, str], AGraph] = drawConstraintGraph
+except ImportError:
+    RangeAnalyser.drawControlFlowGraph = None
+    RangeAnalyser.drawSimpleControlFlowGraph = None
+    RangeAnalyser.drawConstraintGraph = None

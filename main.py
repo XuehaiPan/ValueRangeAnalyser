@@ -7,21 +7,24 @@ from RangeAnalyser import readSsaFile, RangeAnalyser, Function, ValueRange
 
 def printSsaInfo(ssaFile: str, analyser: RangeAnalyser) -> None:
     print('file name:', ssaFile)
-    analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
-    analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
-    analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
+    print('function information:')
+    try:
+        analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
+    except TypeError:
+        pass
     for func in analyser.functions.values():
-        print('function:', func.declaration)
-        print('identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id)
-                                                      for id, dtype in func.localVariables.items())))
-        print('variables:', '({})'.format(', '.join(sorted(func.GEN, key = Function.idCompareKey))))
-        print('block labels:', func.blockLabels)
-        print('control flow graph:', func.controlFlow)
-        print('data flow:', func.dataFlow)
-        print('constraints:', func.constraints)
-        print('def statement of variables:', func.defOfVariable)
-        print('use statements of variables:', func.useOfVariable)
-        print()
+        print('>>> function:', func.declaration)
+        print('|   identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id) for id, dtype in func.variables.items())))
+        print('|   variables:', '({})'.format(', '.join(sorted(func.GEN, key = Function.idCompareKey))))
+        print('|   block labels:', func.blockLabels)
+        print('|   control flow graph:', func.controlFlow)
+        print('|   data flow:', func.dataFlow)
+        print('|   constraints:', func.constraints)
+        print('|   def statement of variables:', func.defOfVariable)
+        print('|   use statements of variables:', func.useOfVariable)
+    print()
 
 
 def main() -> None:
@@ -66,7 +69,7 @@ def benchmark() -> None:
     refRanges: List[str] = ['[100, 100]',
                             '[200, 300]',
                             '[20, 50]',
-                            '[0, +inf]',
+                            '[0, +inf)',
                             '[210, 210]',
                             '[-9, 10]',
                             '[16, 30]',
@@ -87,7 +90,7 @@ def benchmark() -> None:
 
 
 if __name__ == '__main__':
-    useBenchmark: bool = False
+    useBenchmark: bool = True
     if useBenchmark:
         benchmark()
     else:
