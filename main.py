@@ -28,31 +28,35 @@ def printSsaInfo(ssaFile: str, analyser: RangeAnalyser) -> None:
 
 
 def main() -> None:
-    ssaFile: str = input('Input the name of the SSA form file: ')
-    code: str = readSsaFile(file = ssaFile)
-    analyser: RangeAnalyser = RangeAnalyser(code = code)
-    printSsaInfo(ssaFile = ssaFile, analyser = analyser)
-    print('#' * 200)
-    if len(analyser.functionNames) > 1:
-        funcName: str = input('Choose function to benchmark ({}): '.format(' / '.join(analyser.functionNames)))
-    else:
-        funcName: str = analyser.functionNames[0]
-        print('Only one function named {} in the SSA file.'.format(funcName))
-    func: Function = analyser.functions[funcName]
-    print('function declaration:', func.declaration)
-    print()
-    args = []
-    if len(func.args) > 0:
-        for arg, dtype in func.args.items():
-            argRangeStr: str = input('Input the range of argument {}: '.format(arg))
-            lower, upper = eval(argRangeStr)
-            args.append(ValueRange(lower = lower, upper = upper, dtype = dtype))
-    else:
-        print('function {} has no arguments'.format(func.name))
-    print()
-    analyser.analyse(func = func.name, args = args)
-    print('#' * 200)
     print('-' * 200)
+    while True:
+        ssaFile: str = input('Input the name of the SSA form file (type \"quit\" to exit): ')
+        if ssaFile == 'quit':
+            break
+        code: str = readSsaFile(file = ssaFile)
+        analyser: RangeAnalyser = RangeAnalyser(code = code)
+        printSsaInfo(ssaFile = ssaFile, analyser = analyser)
+        print('#' * 200)
+        if len(analyser.functionNames) > 1:
+            funcName: str = input('Choose function to benchmark ({}): '.format(' / '.join(analyser.functionNames)))
+        else:
+            funcName: str = analyser.functionNames[0]
+            print('Only one function named {} in the SSA file.'.format(funcName))
+        func: Function = analyser.functions[funcName]
+        print('function declaration:', func.declaration)
+        print()
+        args: List[ValueRange] = []
+        if len(func.args) > 0:
+            for arg, dtype in func.args.items():
+                argRangeStr: str = input('Input the range of argument {}: '.format(arg))
+                lower, upper = eval(argRangeStr)
+                args.append(ValueRange(lower = lower, upper = upper, dtype = dtype))
+        else:
+            print('function {} has no arguments'.format(func.name))
+        print()
+        analyser.analyse(func = func.name, args = args)
+        print('#' * 200)
+        print('-' * 200)
 
 
 def benchmark() -> None:
@@ -90,7 +94,7 @@ def benchmark() -> None:
 
 
 if __name__ == '__main__':
-    useBenchmark: bool = True
+    useBenchmark: bool = False
     if useBenchmark:
         benchmark()
     else:
