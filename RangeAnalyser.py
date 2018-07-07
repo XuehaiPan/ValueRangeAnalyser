@@ -1,6 +1,6 @@
 import re
 from collections import OrderedDict, deque
-from math import inf, isinf
+from math import inf, isinf, isfinite
 from typing import Union, List, Sequence, Set, Dict, Deque, Callable
 
 from Function import Function, functionImplementation, number, integer
@@ -84,12 +84,23 @@ class RangeAnalyser(object):
             attributes[constraint['res']]['range'][env]: ValueRange = resRange
             return resRange
         
+        def applyFutureResolution() -> None:
+            for stmt in resolutions.keys():
+                constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
+                env: str = constraint['blockLabel']
+                for var, resolution in resolutions[stmt].items():
+                    varRange: ValueRange = attributes[var]['range'][env]
+                    if attributes[var]['type'] != 'num':
+                        for flag in ('true', 'false'):
+                            for blockLabel in constraint['{}List'.format(flag)]:
+                                attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
+        
         def doWidening() -> None:
             for constraint in func.constraints.values():
                 try:
                     attributes[constraint['res']]: Union[str, Dict[str, ValueRange]] = {'type': 'var',
                                                                                         'dtype': None,
-                                                                                        'range': {'global': EmptySet}}
+                                                                                        'range': {'temp': EmptySet}}
                 except KeyError:
                     pass
                 for arg in constraint['args']:
@@ -97,11 +108,11 @@ class RangeAnalyser(object):
                         num: Union[int, float] = (int(arg) if integer.fullmatch(string = arg) else float(arg))
                         attributes[arg]: Union[str, Dict[str, ValueRange]] = {'type': 'num',
                                                                               'dtype': type(num).__name__,
-                                                                              'range': {'global': ValueRange.asValueRange(value = num)}}
+                                                                              'range': {'temp': ValueRange.asValueRange(value = num)}}
                     else:
                         attributes[arg]: Union[str, Dict[str, ValueRange]] = {'type': 'var',
                                                                               'dtype': None,
-                                                                              'range': {'global': EmptySet}}
+                                                                              'range': {'temp': EmptySet}}
             for id, dtype in func.variables.items():
                 for var in attributes.keys():
                     if var.startswith(id):
@@ -111,7 +122,7 @@ class RangeAnalyser(object):
                     if var.startswith(arg):
                         attributes[var]['type']: str = 'arg'
                         attributes[var]['dtype']: str = func.args[arg]
-                        attributes[var]['range']['global']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
+                        attributes[var]['range']['temp']: ValueRange = args[i].asDtype(dtype = attributes[var]['dtype'])
             definitions: Deque[str] = deque(filter(None, func.defOfVariable.values()))
             while len(definitions) > 0:
                 stmt: str = definitions.popleft()
@@ -121,8 +132,8 @@ class RangeAnalyser(object):
                     continue
                 if attributes[var]['type'] != 'var':
                     continue
-                oldRange: ValueRange = attributes[var]['range']['global']
-                newRange: ValueRange = execute(stmt = func.defOfVariable[var], env = 'global')
+                oldRange: ValueRange = attributes[var]['range']['temp']
+                newRange: ValueRange = execute(stmt = func.defOfVariable[var], env = 'temp')
                 if newRange != oldRange:
                     if newRange.isEmptySet():
                         for arg in func.constraints[stmt]['args']:
@@ -142,11 +153,11 @@ class RangeAnalyser(object):
                                                               dtype = attributes[var]['dtype'])
                         else:
                             newRange: ValueRange = oldRange
-                    attributes[var]['range']['global']: ValueRange = newRange
+                    attributes[var]['range']['temp']: ValueRange = newRange
                     definitions.extend(func.useOfVariable[var])
             for var in attributes.keys():
                 for blockLabel in func.blockLabels:
-                    attributes[var]['range'][blockLabel]: ValueRange = attributes[var]['range']['global']
+                    attributes[var]['range'][blockLabel]: ValueRange = attributes[var]['range']['temp']
         
         def determineFutureResolution() -> None:
             for stmt in filter(lambda stmt: func.constraints[stmt]['type'] == 'condition', func.constraints.keys()):
@@ -192,51 +203,35 @@ class RangeAnalyser(object):
                 resolutions[stmt] = {arg1: arg1Resolution, arg2: arg2Resolution}
         
         def doNarrowing() -> None:
-            def applyFutureResolution() -> None:
-                for stmt in resolutions.keys():
-                    constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
-                    env: str = constraint['blockLabel']
-                    for var, resolution in resolutions[stmt].items():
-                        if attributes[var]['type'] != 'num':
-                            constraintVariables.add(var)
-                            varRange: ValueRange = attributes[var]['range'][env]
-                            for flag in ('true', 'false'):
-                                for blockLabel in constraint['{}List'.format(flag)]:
-                                    attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
-            
-            constraintVariables: Set[str] = set()
             changedBlockLabels: Deque[str] = deque(func.blocks.keys())
-            applyFutureResolution()
             while len(changedBlockLabels) > 0:
                 env: str = changedBlockLabels.popleft()
-                if len(constraintVariables.intersection(func.blocks[env].IN)) > 0:
-                    applyFutureResolution()
                 for stmt, constraint in func.blocks[env].constraints.items():
                     if constraint['type'] != 'condition':
+                        applyFutureResolution()
                         res: str = constraint['res']
                         oldRange: ValueRange = attributes[res]['range'][env]
                         newRange: ValueRange = execute(stmt = stmt, env = env)
-                        try:
-                            if not isinf(newRange.lower):
-                                if isinf(oldRange.lower) or newRange.lower < oldRange.lower:
-                                    newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = newRange.lower, upper = +inf,
-                                                                                                    dtype = newRange.dtype))
-                            else:
-                                newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = oldRange.lower, upper = +inf,
-                                                                                                dtype = newRange.dtype))
-                            if not isinf(newRange.upper):
-                                if isinf(oldRange.upper) or newRange.upper > oldRange.upper:
-                                    newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = -inf, upper = newRange.upper,
-                                                                                                    dtype = newRange.dtype))
-                            else:
-                                newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = -inf, upper = oldRange.upper,
-                                                                                                dtype = newRange.dtype))
-                        except TypeError:
-                            pass
                         if newRange != oldRange:
+                            try:
+                                if isfinite(newRange.lower) and (isinf(oldRange.lower) or newRange.lower < oldRange.lower):
+                                    if isfinite(oldRange.upper):
+                                        newRange: ValueRange = newRange.union(ValueRange(lower = newRange.upper, upper = oldRange.upper,
+                                                                                         dtype = newRange.dtype))
+                                
+                                if isfinite(newRange.upper) and (isinf(oldRange.upper) or newRange.upper > oldRange.upper):
+                                    if isfinite(oldRange.lower):
+                                        newRange: ValueRange = newRange.union(ValueRange(lower = oldRange.lower, upper = newRange.lower,
+                                                                                         dtype = newRange.dtype))
+                            except TypeError:
+                                pass
+                            attributes[res]['range'][env]: ValueRange = newRange
+                            applyFutureResolution()
                             for successorLabel in func.successorLabelsWithoutKilling(block = env, var = res):
-                                attributes[res]['range'][successorLabel]: ValueRange = newRange
-                                changedBlockLabels.append(successorLabel)
+                                if attributes[res]['range'][successorLabel] != attributes[res]['range'][env]:
+                                    attributes[res]['range'][successorLabel]: ValueRange = attributes[res]['range'][env]
+                                    changedBlockLabels.append(successorLabel)
+            applyFutureResolution()
         
         if isinstance(func, Function):
             func: str = func.name

@@ -1,4 +1,4 @@
-from math import inf, isinf, isnan, floor
+from math import inf, isinf,isfinite, isnan, floor
 from typing import Type, Union, Sequence, List, Tuple, Callable
 
 
@@ -42,9 +42,9 @@ class BasicValueRange(object):
                     or (isinf(lower) and isinf(upper) and lower == upper):
                 self.__lower, self.__upper = None, None
             elif self.dtype == int:
-                if not isinf(lower) and abs(self.lower + 1 - round(lower)) < 1E-6:
+                if isfinite(lower) and abs(self.lower + 1 - round(lower)) < 1E-6:
                     self.__lower: int = round(lower)
-                if not isinf(upper) and abs(self.upper + 1 - round(upper)) < 1E-6:
+                if isfinite(upper) and abs(self.upper + 1 - round(upper)) < 1E-6:
                     self.__upper: int = round(upper)
         except TypeError:
             self.__lower, self.__upper = None, None

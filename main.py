@@ -60,16 +60,18 @@ def main() -> None:
 
 
 def benchmark() -> None:
-    testArgs: List[List[ValueRange]] = [[],
-                                        [ValueRange(200, 300, int)],
-                                        [ValueRange(0, 10, int), ValueRange(20, 50, int)],
-                                        [ValueRange(-inf, +inf, int)],
-                                        [],
-                                        [ValueRange(-inf, +inf, int)],
-                                        [ValueRange(-10, 10, int)],
-                                        [ValueRange(1, 100, int), ValueRange(-2, 2, int)],
-                                        [],
-                                        [ValueRange(30, 50, int), ValueRange(90, 100, int)]]
+    testArgs: List[List[ValueRange]] = [
+        [],
+        [ValueRange(lower = 200, upper = 300, dtype = int)],
+        [ValueRange(lower = 0, upper = 10, dtype = int), ValueRange(20, upper = 50, dtype = int)],
+        [ValueRange(lower = -inf, upper = +inf, dtype = int)],
+        [],
+        [ValueRange(lower = -inf, upper = +inf, dtype = int)],
+        [ValueRange(lower = -10, upper = 10, dtype = int)],
+        [ValueRange(lower = 1, upper = 100, dtype = int), ValueRange(lower = -2, upper = 2, dtype = int)],
+        [],
+        [ValueRange(lower = 30, upper = 50, dtype = int), ValueRange(lower = 90, upper = 100, dtype = int)]
+    ]
     refRanges: List[str] = ['[100, 100]',
                             '[200, 300]',
                             '[20, 50]',
@@ -94,7 +96,7 @@ def benchmark() -> None:
 
 
 if __name__ == '__main__':
-    useBenchmark: bool = False
+    useBenchmark: bool = True
     if useBenchmark:
         benchmark()
     else:

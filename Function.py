@@ -287,6 +287,25 @@ class Function(object):
     def successorsWithoutKilling(self, block: Union[str, Block], var: str) -> Set[Block]:
         return set(map(self.blocks.get, self.successorLabelsWithoutKilling(block = block, var = var)))
     
+    def successorLabelsWithoutKillingConditions(self, block: Union[str, Block], var: str) -> Set[str]:
+        return set(map(lambda b: b.label, self.successorsWithoutKillingConditions(block = block, var = var)))
+    
+    def successorsWithoutKillingConditions(self, block: Union[str, Block], var: str) -> Set[Block]:
+        if isinstance(block, str):
+            block: Block = self.blocks[block]
+        traveledBlocks: Set[Block] = set()
+        successors: Set[Block] = set(block.successors)
+        while len(successors) > 0:
+            successor: Block = successors.pop()
+            if successor in traveledBlocks:
+                continue
+            if successor.transferCondition is not None and var in successor.transferCondition:
+                continue
+            traveledBlocks.add(successor)
+            if var not in successor.KILL:
+                successors.update(successor.successors)
+        return traveledBlocks
+    
     def dominantBlockLabelsOf(self, block: Union[str, Block]) -> Set[str]:
         if isinstance(block, Block):
             block: str = block.label
@@ -462,8 +481,8 @@ class Block(object):
                             falseList: List[str] = [constraints[stmt]['false']]
                             for arg in constraints[stmt]['args']:
                                 if number.fullmatch(string = arg) is None:
-                                    trueList.extend(self.function.successorLabelsWithoutKilling(block = trueList[0], var = arg))
-                                    falseList.extend(self.function.successorLabelsWithoutKilling(block = falseList[0], var = arg))
+                                    trueList.extend(self.function.successorLabelsWithoutKillingConditions(block = trueList[0], var = arg))
+                                    falseList.extend(self.function.successorLabelsWithoutKillingConditions(block = falseList[0], var = arg))
                             constraints[stmt]['trueList']: List[str] = trueList
                             constraints[stmt]['falseList']: List[str] = falseList
                 elif phiStatement.fullmatch(string = stmt) is not None:
@@ -572,6 +591,12 @@ class Block(object):
     
     def successorsWithoutKilling(self, var: str) -> Set[Block]:
         return self.function.successorsWithoutKilling(block = self, var = var)
+    
+    def successorLabelsWithoutKillingConditions(self, var: str) -> Set[str]:
+        return self.function.successorLabelsWithoutKillingConditions(block = self, var = var)
+    
+    def successorsWithoutKillingConditions(self, var: str) -> Set[Block]:
+        return self.function.successorsWithoutKillingConditions(block = self, var = var)
     
     def __str__(self) -> str:
         return self.label

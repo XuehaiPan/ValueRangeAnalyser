@@ -6,7 +6,7 @@ from typing import Pattern, Match
 keywords: Set[str] = {'int', 'float', 'if', 'else', 'goto'}
 types: Dict[str, Type] = {'int': int, 'float': float}
 wordSplitters: str = r'[\s,.?;:\'\"\\|~!@#$%^&+\-*/=<>{}\[\]()]'
-functionDeclaration: Pattern = re.compile(r'(?P<type>int|float)\s+(?P<name>\w+)\s*\((?P<args>[\w\s,]*\))')
+functionDeclaration: Pattern = re.compile(r'(?P<type>int|float)\s+(?P<name>\w+)\s*\((?P<args>[\w\s,]*)\)')
 variableDeclaration: Pattern = re.compile(r'(?P<type>int|float)\s+(?P<id>\w+)\s*' + wordSplitters)
 variableAssignment: Pattern = re.compile(r'^(?P<id>\w+(_\d+)?)\s*=[^=]')
 ifStatement: Pattern = re.compile(r'if\s*\((?P<condition>[\w\s<>=!]+)\)')
@@ -110,7 +110,7 @@ def translateBlock(depth: int, cCodeSplit: List[str], pyCodeSplit: List[str]) ->
             elif functionDeclaration.search(string = cCode) is not None:
                 matcher: Match = functionDeclaration.search(string = cCode)
                 identifiers: List[Tuple[str, str]] = list()
-                for m in variableDeclaration.finditer(string = matcher.group('args')):
+                for m in variableDeclaration.finditer(string = matcher.group('args') + ','):
                     identifiers.append(([m.group('id')], m.group('type')))
                 args = ', '.join('{}: {}'.format(id, type) for id, type in identifiers)
                 fn = matcher.group('name')
@@ -172,7 +172,7 @@ def translateBlock(depth: int, cCodeSplit: List[str], pyCodeSplit: List[str]) ->
 
 
 if __name__ == '__main__':
-    cFile: str = 'benchmark/t%d.c' % 9
+    cFile: str = 'benchmark/t%d.c'.format(9)
     cCodeSplit: List[str] = readCFile(file = cFile)
     cCodeSplit: List[str] = list(filter(str.strip, cCodeSplit))
     print('file name: {}'.format(cFile))
