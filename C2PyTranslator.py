@@ -20,18 +20,6 @@ doStmt = False
 
 
 def formatCode(statements: List[str]) -> List[str]:
-    def doPreprocessing(stmt: str):
-        stmt: str = re.sub(r'\s+', repl = ' ', string = stmt)
-        stmt: str = re.sub(r'\s*;', repl = ';', string = stmt)
-        stmt: str = re.sub(r';;.*$', repl = '', string = stmt)
-        stmt: str = re.sub(r'(int|float)\s+D\.\d*\s*;', repl = '', string = stmt)
-        stmt: str = re.sub(r'(?P<postfix>_\d+\s*)\(D\)', repl = lambda m: m.group('postfix'), string = stmt)
-        stmt: str = stmt.strip()
-        if stmt != 'else':
-            return stmt
-        else:
-            return ''
-    
     statements.insert(0, '{')
     statements.insert(-1, '}')
     code: str = '\n'.join(statements)
@@ -172,7 +160,7 @@ def translateBlock(depth: int, cCodeSplit: List[str], pyCodeSplit: List[str]) ->
 
 
 if __name__ == '__main__':
-    cFile: str = 'benchmark/t%d.c'.format(9)
+    cFile: str = 'benchmark/t{}.c'.format(9)
     cCodeSplit: List[str] = readCFile(file = cFile)
     cCodeSplit: List[str] = list(filter(str.strip, cCodeSplit))
     print('file name: {}'.format(cFile))
