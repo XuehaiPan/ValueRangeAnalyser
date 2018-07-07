@@ -81,20 +81,20 @@ def benchmark() -> None:
                             '[9791, 9791]',
                             '[-10, 40]']
     print('-' * 200)
-    for i in range(1, 11):
+    for i, (testArg, refRange) in enumerate(zip(testArgs, refRanges), start = 1):
         ssaFile = 'benchmark/t{}.ssa'.format(i)
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
         printSsaInfo(ssaFile = ssaFile, analyser = analyser)
         print('#' * 200)
-        analyser.analyse(func = 'foo', args = testArgs[i - 1])
-        print('reference range: {}'.format(refRanges[i - 1]))
+        analyser.analyse(func = 'foo', args = testArg)
+        print('reference range: {}'.format(refRange))
         print('#' * 200)
         print('-' * 200)
 
 
 if __name__ == '__main__':
-    useBenchmark: bool = False
+    useBenchmark: bool = True
     if useBenchmark:
         benchmark()
     else:

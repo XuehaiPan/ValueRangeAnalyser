@@ -1,7 +1,7 @@
 import re
 from collections import OrderedDict, deque
-from math import inf
-from typing import Union, List, Sequence, Dict, Deque, Callable
+from math import inf, isinf
+from typing import Union, List, Sequence, Set, Dict, Deque, Callable
 
 from Function import Function, functionImplementation, number, integer
 from ValueRange import ValueRange, EmptySet, IntegerNumberSet
@@ -148,7 +148,7 @@ class RangeAnalyser(object):
                 for blockLabel in func.blockLabels:
                     attributes[var]['range'][blockLabel]: ValueRange = attributes[var]['range']['global']
         
-        def doFutureResolution() -> None:
+        def determineFutureResolution() -> None:
             for stmt in filter(lambda stmt: func.constraints[stmt]['type'] == 'condition', func.constraints.keys()):
                 constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
                 op: str = constraint['op']
@@ -192,23 +192,51 @@ class RangeAnalyser(object):
                 resolutions[stmt] = {arg1: arg1Resolution, arg2: arg2Resolution}
         
         def doNarrowing() -> None:
-            for stmt in resolutions.keys():
-                constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
-                env: str = constraint['blockLabel']
-                for var, resolution in resolutions[stmt].items():
-                    if attributes[var]['type'] != 'num':
-                        varRange: ValueRange = attributes[var]['range'][env]
-                        for flag in ('true', 'false'):
-                            for blockLabel in constraint['{}List'.format(flag)]:
-                                attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
-            for stmt, constraint in func.constraints.items():
-                if constraint['type'] != 'condition':
-                    res: str = constraint['res']
+            def applyFutureResolution() -> None:
+                for stmt in resolutions.keys():
+                    constraint: Dict[str, Union[str, List[str]]] = func.constraints[stmt]
                     env: str = constraint['blockLabel']
-                    resRange: ValueRange = execute(stmt = stmt, env = env)
-                    for successor in func.successorsOf(block = env):
-                        if res in successor.IN:
-                            attributes[res]['range'][successor.label]: ValueRange = resRange
+                    for var, resolution in resolutions[stmt].items():
+                        if attributes[var]['type'] != 'num':
+                            constraintVariables.add(var)
+                            varRange: ValueRange = attributes[var]['range'][env]
+                            for flag in ('true', 'false'):
+                                for blockLabel in constraint['{}List'.format(flag)]:
+                                    attributes[var]['range'][blockLabel]: ValueRange = varRange.intersection(other = resolution[flag])
+            
+            constraintVariables: Set[str] = set()
+            changedBlockLabels: Deque[str] = deque(func.blocks.keys())
+            applyFutureResolution()
+            while len(changedBlockLabels) > 0:
+                env: str = changedBlockLabels.popleft()
+                if len(constraintVariables.intersection(func.blocks[env].IN)) > 0:
+                    applyFutureResolution()
+                for stmt, constraint in func.blocks[env].constraints.items():
+                    if constraint['type'] != 'condition':
+                        res: str = constraint['res']
+                        oldRange: ValueRange = attributes[res]['range'][env]
+                        newRange: ValueRange = execute(stmt = stmt, env = env)
+                        try:
+                            if not isinf(newRange.lower):
+                                if isinf(oldRange.lower) or newRange.lower < oldRange.lower:
+                                    newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = newRange.lower, upper = +inf,
+                                                                                                    dtype = newRange.dtype))
+                            else:
+                                newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = oldRange.lower, upper = +inf,
+                                                                                                dtype = newRange.dtype))
+                            if not isinf(newRange.upper):
+                                if isinf(oldRange.upper) or newRange.upper > oldRange.upper:
+                                    newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = -inf, upper = newRange.upper,
+                                                                                                    dtype = newRange.dtype))
+                            else:
+                                newRange: ValueRange = oldRange.intersection(other = ValueRange(lower = -inf, upper = oldRange.upper,
+                                                                                                dtype = newRange.dtype))
+                        except TypeError:
+                            pass
+                        if newRange != oldRange:
+                            for successorLabel in func.successorLabelsWithoutKilling(block = env, var = res):
+                                attributes[res]['range'][successorLabel]: ValueRange = newRange
+                                changedBlockLabels.append(successorLabel)
         
         if isinstance(func, Function):
             func: str = func.name
@@ -225,7 +253,7 @@ class RangeAnalyser(object):
         attributes: Dict[str, Dict[str, Union[str, Dict[str, ValueRange]]]] = dict()
         resolutions: Dict[str, Dict[str, Dict[str, ValueRange]]] = dict()
         doWidening()
-        doFutureResolution()
+        determineFutureResolution()
         doNarrowing()
         for block in func.blocks.values():
             env: str = block.label
