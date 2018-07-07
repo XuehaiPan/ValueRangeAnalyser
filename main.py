@@ -94,7 +94,7 @@ def benchmark() -> None:
 
 
 if __name__ == '__main__':
-    useBenchmark: bool = True
+    useBenchmark: bool = False
     if useBenchmark:
         benchmark()
     else:
