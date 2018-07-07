@@ -1,10 +1,16 @@
 import re
-from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
 from collections import OrderedDict
+from typing import Type, Union, Optional, List, Tuple, Set, Dict, Pattern, Match
 
+
+__all__: List[str] = ['Function', 'Block',
+                      'keywords', 'dtypes', 'monocularOperators', 'binocularOperators', 'relationalOperators', 'arithmeticOperators',
+                      'wordSplitters', 'functionImplementation', 'variableDeclaration', 'blockLabel',
+                      'number', 'integer', 'variable', 'factor',
+                      'ifStatement', 'gotoStatement', 'returnStatement', 'variableAssignment', 'functionCall', 'phiStatement', 'operations']
 
 keywords: Set[str] = {'int', 'float', 'if', 'else', 'goto'}
-types: Dict[str, Type] = {'int': int, 'float': float}
+dtypes: Dict[str, Type] = {'int': int, 'float': float}
 
 monocularOperators: Set[str] = {'minus', '(int)', '(float)'}
 binocularOperators: Set[str] = {'+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>='}
@@ -13,32 +19,32 @@ arithmeticOperators: Set[str] = {'+', '-', '*', '/'}
 wordSplitters: str = r'[\s,.?;:\'\"\\|~!@#$%^&+\-*/=<>{}\[\]()]'
 
 functionImplementation: Pattern = re.compile(r'(?P<name>\w+)\s*\((?P<args>[\w\s,]*)\)\s*{\s*(?P<body>[^}]*)\s*}')
-variableDeclaration: Pattern = re.compile(r'(?P<type>int|float)\s+(?P<id>\w+)\s*' + wordSplitters)
+variableDeclaration: Pattern = re.compile(r'(?P<type>int|float)\s+(?P<id>\w+)\s*{}'.format(wordSplitters))
 blockLabel: Pattern = re.compile(r'^\s*(?P<label><[\w\s]+>)\s*:\s*$')
 ifStatement: Pattern = re.compile(r'^\s*if\s*\((?P<cond>[\w\s=<>!+\-]+)\)\s*$')
 gotoStatement: Pattern = re.compile(r'^\s*goto\s+(?P<label><[\w\s]+>)\s*;\s*$')
 returnStatement: Pattern = re.compile(r'^\s*return\s*(?P<id>\w*)\s*;\s*$')
 
-variableAssignment: Pattern = re.compile('^\s*(?P<res>(?P<id>\w*)_(?P<num>\d+))\s*=(?P<expr>[^=;]*);\s*$')
-phiStatement: Pattern = re.compile(r'^\s*#\s+(?P<res>(?P<id>\w*)_(?P<num>\d+))\s*=\s*PHI\s*<\s*'
-                                   r'(?P<arg1>(?P<id1>\w*)_(?P<num1>\d+))\s*,\s*'
-                                   r'(?P<arg2>(?P<id2>\w*)_(?P<num2>\d+))'
-                                   r'\s*>\s*$')
-functionCall: Pattern = re.compile(r'^\s*(?P<name>\w+)\s*\((?P<args>[\w\s+\-.,]*)\)\s*$')
-
 numPattern: str = r'(?P<number>[+\-]?\d+(\.\d+)?([Ee][+\-]?\d+)?)'
 varPattern: str = r'(?P<id>\w*)_(?P<num>\d+)'
 factorPattern: str = r'(\w*_\d+)|([+\-]?\d+(\.\d+)?([Ee][+\-]?\d+)?)'
+var1Pattern: str = r'(?P<id1>\w*)_(?P<num1>\d+)'
+var2Pattern: str = r'(?P<id2>\w*)_(?P<num2>\d+)'
+num1Pattern: str = r'(?P<number1>[+-]?\d+(\.\d+)?([Ee][+-]?\d+)?)'
+num2Pattern: str = r'(?P<number2>[+-]?\d+(\.\d+)?([Ee][+-]?\d+)?)'
+
 number: Pattern = re.compile(r'^\s*{}\s*$'.format(numPattern))
 integer: Pattern = re.compile(r'^\s*(?P<integer>[+\-]?\d+)\s*$')
 variable: Pattern = re.compile(r'^\s*{}\s*$'.format(varPattern))
 factor: Pattern = re.compile(r'^\s*{}\s*$'.format(factorPattern))
 
+variableAssignment: Pattern = re.compile('^\s*(?P<res>{})\s*=(?P<expr>[^=;]*);\s*$'.format(varPattern))
+functionCall: Pattern = re.compile(r'^\s*(?P<name>\w+)\s*\((?P<args>[\w\s+\-.,]*)\)\s*$')
+phiStatement: Pattern = re.compile(r'^\s*#\s+(?P<res>{})\s*=\s*PHI\s*<\s*(?P<arg1>{})\s*,\s*(?P<arg2>{})\s*>\s*$'.format(varPattern,
+                                                                                                                         var1Pattern,
+                                                                                                                         var2Pattern))
+
 operations: Dict[str, Pattern] = dict()
-var1Pattern: str = r'(?P<id1>\w*)_(?P<num1>\d+)'
-var2Pattern: str = r'(?P<id2>\w*)_(?P<num2>\d+)'
-num1Pattern: str = r'(?P<number1>[+-]?\d+(\.\d+)?([Ee][+-]?\d+)?)'
-num2Pattern: str = r'(?P<number2>[+-]?\d+(\.\d+)?([Ee][+-]?\d+)?)'
 operations['minus']: Pattern = re.compile(r'^\s*-\s*(?P<arg1>{})\s*$'.format(factorPattern))
 operations['(int)']: Pattern = re.compile(r'^\s*(?P<op>\(int\))\s*(?P<arg1>{})\s*$'.format(factorPattern))
 operations['(float)']: Pattern = re.compile(r'^\s*(?P<op>\(float\))\s*(?P<arg1>{})\s*$'.format(factorPattern))
@@ -49,16 +55,11 @@ for op in binocularOperators:
     operations[op]: Pattern = re.compile(r'^\s*(?P<arg1>{})\s+(?P<op>{})\s+(?P<arg2>{})\s*$'.format(factorPattern,
                                                                                                     opPattern,
                                                                                                     factorPattern))
-    del opPattern
+    del op, opPattern
 
 del varPattern, numPattern, factorPattern, var1Pattern, var2Pattern, num1Pattern, num2Pattern
 
-Block = type('Block', (object,), dict())
-
-
-class ThreeAddressCode(object):
-    def __init__(self) -> None:
-        pass
+Block: Type = type('Block', (object,), dict())
 
 
 class Function(object):

@@ -1,11 +1,15 @@
 import re
-import os
-from typing import Type, Union, Optional, List, Tuple, Sequence, Set, Dict, Deque, Pattern, Match
 from collections import OrderedDict, deque
+from math import inf
+from typing import Union, List, Sequence, Dict, Deque
+
 import pygraphviz as pgv
-from math import inf, isinf, nan, isnan
-from Function import *
-from ValueRange import ValueRange, EmptySet, IntegerNumberSet, RealNumberSet, dtypeFromString
+
+from Function import Function, functionImplementation, number, integer
+from ValueRange import ValueRange, EmptySet, IntegerNumberSet
+
+
+__all__: List[str] = ['readSsaFile', 'RangeAnalyser', 'Function', 'ValueRange']
 
 
 def formatCode(statements: List[str]) -> List[str]:
@@ -225,16 +229,19 @@ class RangeAnalyser(object):
         attributes: Dict[str, Dict[str, Union[str, Dict[str, ValueRange]]]] = dict()
         resolutions: Dict[str, Dict[str, Dict[str, ValueRange]]] = dict()
         doWidening()
-        doFutureResolution()
-        doNarrowing()
-        print(resolutions)
-        for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', attributes.keys()), key = Function.idCompareKey):
-            try:
-                env: str = func.constraints[func.defOfVariable[var]]['blockLabel']
-            except KeyError:
-                env: str = 'global'
-            print('{}{} {}: {}'.format('|   ' * (depth + 1), attributes[var]['dtype'], var, attributes[var]['range'][env]))
-        print('{}{} returns {}'.format('|   ' * depth, func.declaration, attributes[func.ret]['range'][func.returnBlockLabel]))
+        for i in range(5):
+            doFutureResolution()
+            doNarrowing()
+        for block in func.blocks.values():
+            env: str = block.label
+            print('{}{}:'.format('|   ' * (depth + 1), env))
+            if block.label != func.returnBlockLabel:
+                for var in sorted(filter(lambda var: attributes[var]['type'] != 'num', block.GEN), key = Function.idCompareKey):
+                    print('{}{} {}: {}'.format('|   ' * (depth + 2), attributes[var]['dtype'], var, attributes[var]['range'][env]))
+            elif func.ret is not None:
+                var: str = func.ret
+                print('{}{} {}: {}'.format('|   ' * (depth + 2), attributes[var]['dtype'], var, attributes[var]['range'][env]))
+        print('{}{} returns {}'.format('|   ' * depth, func.prototype, attributes[func.ret]['range'][func.returnBlockLabel]))
         # print(attributes)
         return attributes[func.ret]['range'][func.returnBlockLabel]
     
@@ -432,119 +439,3 @@ class RangeAnalyser(object):
         if varRange.lower == varRange.upper:
             return IntegerNumberSet.difference(other = varRange)
         return IntegerNumberSet.asDtype(dtype = varRange.dtype)
-
-
-def main() -> None:
-    # ssaFile: str = input('Input the name of the SSA form file: ')
-    for i in range(1, 11):
-        i = 5
-        ssaFile = 'benchmark/t%d.ssa' % i
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        # for func in analyser.functions.values():
-        #     print('function:', func.declaration)
-        #     print('identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id)
-        #                                                   for id, dtype in func.localVariables.items())))
-        #     print('block labels:', func.blockLabels)
-        #     print('control flow graph:', func.controlFlow)
-        #     print('data flow:', func.dataFlow)
-        #     print('constraints:', func.constraints)
-        #     print('def of variables:', func.defOfVariable)
-        #     print('use of variables:', func.useOfVariable)
-        #     print()
-        #     analyser.analyse(func = func, args = [ValueRange(200, 300, int) for arg in func.args.keys()])
-        #     print()
-        analyser.analyse(func = 'foo', args = 0 * [ValueRange(-inf, +inf, int)])
-        print()
-        analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
-        analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
-        analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
-        break
-
-
-if __name__ == '__main__':
-    # main()
-    test: bool = True
-    if not test:
-        main()
-    else:
-        ssaFile = 'benchmark/t%d.ssa' % 1
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [])
-        print('[100, 100]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 2
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(200, 300, int)])
-        print('[200, 300]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 3
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(0, 10, int), ValueRange(20, 50, int)])
-        print('[20, 50]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 4
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(-inf, +inf, int)])
-        print('[0, +inf]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 5
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [])
-        print('[210, 210]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 6
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(-inf, +inf, int)])
-        print('[-9, 10]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 7
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(-10, 10, int)])
-        print('[16, 30]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 8
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(1, 100, int), ValueRange(-2, 2, int)])
-        print('[-3.2192308, 5.94230769]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 9
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [])
-        print('[9791, 9791]')
-        print()
-        
-        ssaFile = 'benchmark/t%d.ssa' % 10
-        code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        print('file name:', ssaFile)
-        analyser.analyse(func = 'foo', args = [ValueRange(30, 50, int), ValueRange(90, 100, int)])
-        print('[-10, 40]')
-        print()

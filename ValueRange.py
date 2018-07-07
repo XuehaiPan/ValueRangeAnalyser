@@ -1,11 +1,11 @@
+from math import inf, isinf, isnan, floor
 from typing import Type, Union, Sequence, List, Tuple
-from math import inf, isinf, nan, isnan, floor
 
 
-__all__ = ['ValueRange', 'EmptySet', 'IntegerNumberSet', 'RealNumberSet', 'dtypeFromString']
+__all__: List[str] = ['ValueRange', 'EmptySet', 'IntegerNumberSet', 'RealNumberSet', 'dtypeFromString']
 
-BasicValueRange = type('BasicValueRange', (object,), dict())
-ValueRange = type('ValueRange', (object,), dict())
+BasicValueRange: Type = type('BasicValueRange', (object,), dict())
+ValueRange: Type = type('ValueRange', (object,), dict())
 
 
 def dtypeFromString(dtype: str) -> Union[Type[int], Type[float]]:
@@ -18,9 +18,8 @@ def dtypeFromString(dtype: str) -> Union[Type[int], Type[float]]:
 
 
 class BasicValueRange(object):
-    def __init__(self, lower: Union[int, float] = None,
-                 upper: Union[int, float] = None,
-                 dtype: Union[str, Type[int], Type[float]] = float):
+    def __init__(self, lower: Union[int, float] = None, upper: Union[int, float] = None,
+                 dtype: Union[str, Type[int], Type[float]] = float) -> None:
         if isinstance(dtype, str):
             dtype: Union[Type[int], Type[float]] = dtypeFromString(dtype = dtype)
         if dtype != int and dtype != float:
@@ -39,8 +38,7 @@ class BasicValueRange(object):
             else:
                 self.__lower: float = float(lower)
                 self.__upper: float = float(upper)
-            if self.lower > self.upper \
-                    or isnan(lower) or isnan(upper) \
+            if self.lower > self.upper or isnan(lower) or isnan(upper) \
                     or (isinf(lower) and isinf(upper) and lower == upper):
                 self.__lower, self.__upper = None, None
             elif self.dtype == int:
@@ -427,7 +425,7 @@ class ValueRange(object):
     def __contains__(self, value: Union[int, float]) -> bool:
         return any(value in valueRange for valueRange in self.valueRanges)
     
-    def __str__(self):
+    def __str__(self) -> str:
         if self.isEmptySet():
             return 'EmptySet'
         else:
@@ -455,6 +453,7 @@ IntegerNumberSet: ValueRange = ValueRange(lower = -inf, upper = +inf, dtype = in
 RealNumberSet: ValueRange = ValueRange(lower = -inf, upper = +inf, dtype = float)
 
 if __name__ == '__main__':
+    print('test ValueRange:')
     s1 = BasicValueRange(10, +inf, int)
     s2 = BasicValueRange(2, 3, int)
     s3 = BasicValueRange(4, 5, int)
