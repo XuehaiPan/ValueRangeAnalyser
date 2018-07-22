@@ -1,7 +1,7 @@
 import re
 from collections import OrderedDict, deque
 from math import inf, isinf, isfinite
-from typing import Union, List, Sequence, Set, Dict, Deque, Callable
+from typing import Union, List, Sequence, Dict, Deque, Callable
 
 from Function import Function, functionImplementation, number, integer
 from ValueRange import ValueRange, EmptySet, IntegerNumberSet

@@ -1,4 +1,4 @@
-from math import inf, isinf,isfinite, isnan, floor
+from math import inf, isinf, isfinite, isnan, floor
 from typing import Type, Union, Sequence, List, Tuple, Callable
 
 

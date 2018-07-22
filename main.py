@@ -84,7 +84,7 @@ def benchmark() -> None:
                             '[-10, 40]']
     print('-' * 200)
     for i, (testArg, refRange) in enumerate(zip(testArgs, refRanges), start = 1):
-        ssaFile = 'benchmark/t{}.ssa'.format(i)
+        ssaFile: str = 'benchmark/t{}.ssa'.format(i)
         code: str = readSsaFile(file = ssaFile)
         analyser: RangeAnalyser = RangeAnalyser(code = code)
         printSsaInfo(ssaFile = ssaFile, analyser = analyser)
