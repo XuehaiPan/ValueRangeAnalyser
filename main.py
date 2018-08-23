@@ -2,19 +2,19 @@ import os
 from math import inf
 from typing import List
 
-from RangeAnalyser import readSsaFile, RangeAnalyser, Function, ValueRange
+from RangeAnalyst import readSsaFile, RangeAnalyst, Function, ValueRange
 
 
-def printSsaInfo(ssaFile: str, analyser: RangeAnalyser) -> None:
+def printSsaInfo(ssaFile: str, analyst: RangeAnalyst) -> None:
     print('file name:', ssaFile)
     print('function information:')
     try:
-        analyser.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
-        analyser.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
-        analyser.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyst.drawControlFlowGraph(file = '{}_CFG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyst.drawSimpleControlFlowGraph(file = '{}_SCFG.png'.format(os.path.splitext(ssaFile)[0]))
+        analyst.drawConstraintGraph(file = '{}_CG.png'.format(os.path.splitext(ssaFile)[0]))
     except TypeError:
         pass
-    for func in analyser.functions.values():
+    for func in analyst.functions.values():
         print('>>> function:', func.declaration)
         print('|   identifiers:', '({})'.format(', '.join('{} {}'.format(dtype, id) for id, dtype in func.variables.items())))
         print('|   variables:', '({})'.format(', '.join(sorted(func.GEN, key = Function.idCompareKey))))
@@ -34,15 +34,15 @@ def main() -> None:
         if ssaFile == 'quit':
             break
         code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        printSsaInfo(ssaFile = ssaFile, analyser = analyser)
+        analyst: RangeAnalyst = RangeAnalyst(code = code)
+        printSsaInfo(ssaFile = ssaFile, analyst = analyst)
         print('#' * 200)
-        if len(analyser.functionNames) > 1:
-            funcName: str = input('Choose function to benchmark ({}): '.format(' / '.join(analyser.functionNames)))
+        if len(analyst.functionNames) > 1:
+            funcName: str = input('Choose function to benchmark ({}): '.format(' / '.join(analyst.functionNames)))
         else:
-            funcName: str = analyser.functionNames[0]
+            funcName: str = analyst.functionNames[0]
             print('Only one function named {} in the SSA file.'.format(funcName))
-        func: Function = analyser.functions[funcName]
+        func: Function = analyst.functions[funcName]
         print('function declaration:', func.declaration)
         print()
         args: List[ValueRange] = []
@@ -54,7 +54,7 @@ def main() -> None:
         else:
             print('function {} has no arguments'.format(func.name))
         print()
-        analyser.analyse(func = func.name, args = args)
+        analyst.analyse(func = func.name, args = args)
         print('#' * 200)
         print('-' * 200)
 
@@ -86,10 +86,10 @@ def benchmark() -> None:
     for i, (testArg, refRange) in enumerate(zip(testArgs, refRanges), start = 1):
         ssaFile: str = 'benchmark/t{}.ssa'.format(i)
         code: str = readSsaFile(file = ssaFile)
-        analyser: RangeAnalyser = RangeAnalyser(code = code)
-        printSsaInfo(ssaFile = ssaFile, analyser = analyser)
+        analyst: RangeAnalyst = RangeAnalyst(code = code)
+        printSsaInfo(ssaFile = ssaFile, analyst = analyst)
         print('#' * 200)
-        analyser.analyse(func = 'foo', args = testArg)
+        analyst.analyse(func = 'foo', args = testArg)
         print('reference range: {}'.format(refRange))
         print('#' * 200)
         print('-' * 200)

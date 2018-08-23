@@ -1,4 +1,4 @@
-# ValueRangeAnalyser
+# ValueRangeAnalyst
 
 潘学海 1500011317
 
@@ -9,10 +9,10 @@
 ​	同时为了更直观地显示各个函数及基本块之间的关系，我们使用了 `pygraphviz` 包进行对 Control Flow Graph (CFG) 和 Constraint Graph (CG) 进行可视化。但该包不是必须的，程序会自动尝试导入该包，若导入失败则在测试过程中不会绘制 CFG 和 CG。
 
 ```Python
-# RangeAnalyser.py
+# RangeAnalyst.py
 # some code
 
-class RangeAnalyser(object):
+class RangeAnalyst(object):
     # some code
     pass
     
@@ -23,25 +23,25 @@ class RangeAnalyser(object):
 try:
     from pygraphviz import AGraph
     
-    def drawControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawControlFlowGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         # some code
         pass
     
-    def drawSimpleControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawSimpleControlFlowGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         # some code
         pass
     
-    def drawConstraintGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawConstraintGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         # some code
         pass
     
-    RangeAnalyser.drawControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawControlFlowGraph
-    RangeAnalyser.drawSimpleControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawSimpleControlFlowGraph
-    RangeAnalyser.drawConstraintGraph: Callable[[RangeAnalyser, str], AGraph] = drawConstraintGraph
+    RangeAnalyst.drawControlFlowGraph: Callable[[RangeAnalyst, str], AGraph] = drawControlFlowGraph
+    RangeAnalyst.drawSimpleControlFlowGraph: Callable[[RangeAnalyst, str], AGraph] = drawSimpleControlFlowGraph
+    RangeAnalyst.drawConstraintGraph: Callable[[RangeAnalyst, str], AGraph] = drawConstraintGraph
 except ImportError:
-    RangeAnalyser.drawControlFlowGraph = None
-    RangeAnalyser.drawSimpleControlFlowGraph = None
-    RangeAnalyser.drawConstraintGraph = None
+    RangeAnalyst.drawControlFlowGraph = None
+    RangeAnalyst.drawSimpleControlFlowGraph = None
+    RangeAnalyst.drawConstraintGraph = None
 ```
 
 其中 CFG 的可视化结果中除了会显示各个数据块之间的控制关系外，还会包含数据流分析中得到的分析结果，如每个基本块的 `GEN`、`KILL`、`USE`、`IN`、`OUT` 等。
@@ -64,7 +64,7 @@ Constraint Graph of `t7.ssa`:
 
 ### 常规测试
 
-​	程序包含文件  `main.py`、`RangeAnalyser.py`、`Function.py`、`ValueRange.py` 四个源文件，使用前请将该四个文件置于同一目录下。
+​	程序包含文件  `main.py`、`RangeAnalyst.py`、`Function.py`、`ValueRange.py` 四个源文件，使用前请将该四个文件置于同一目录下。
 
 ​	使用 Python 3.5 或以上版本执行 `main.py` 文件即可运行测试。
 
@@ -88,7 +88,7 @@ Constraint Graph of `t7.ssa`:
 # main.py
 # imports
 
-def printSsaInfo(ssaFile: str, analyser: RangeAnalyser) -> None:
+def printSsaInfo(ssaFile: str, analyst: RangeAnalyst) -> None:
     # some code
     pass
 

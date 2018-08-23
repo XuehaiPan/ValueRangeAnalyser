@@ -7,7 +7,7 @@ from Function import Function, functionImplementation, number, integer
 from ValueRange import ValueRange, EmptySet, IntegerNumberSet
 
 
-__all__: List[str] = ['readSsaFile', 'RangeAnalyser', 'Function', 'ValueRange']
+__all__: List[str] = ['readSsaFile', 'RangeAnalyst', 'Function', 'ValueRange']
 
 
 def formatCode(statements: List[str]) -> List[str]:
@@ -33,7 +33,7 @@ def readSsaFile(file: str) -> str:
         return '\n'.join(formatCode(statements = ssaFile.readlines()))
 
 
-class RangeAnalyser(object):
+class RangeAnalyst(object):
     def __init__(self, code: str) -> None:
         self.__functions: Dict[str, Function] = OrderedDict()
         for matcher in functionImplementation.finditer(string = code):
@@ -171,35 +171,35 @@ class RangeAnalyser(object):
                 arg1Resolution: Dict[str, ValueRange] = dict()
                 arg2Resolution: Dict[str, ValueRange] = dict()
                 if op == '<':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionLT(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionGE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionGT(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionLE(varRange = arg1Range)
                 elif op == '<=':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionLE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionGT(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionGE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionLT(varRange = arg1Range)
                 if op == '>':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionGT(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionLE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionLT(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionGE(varRange = arg1Range)
                 elif op == '>=':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionGE(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionLT(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionLE(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionGT(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionGE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionLT(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionLE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionGT(varRange = arg1Range)
                 elif op == '==':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionEQ(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionNE(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionEQ(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionNE(varRange = arg1Range)
                 elif op == '!=':
-                    arg1Resolution['true']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg2Range)
-                    arg1Resolution['false']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg2Range)
-                    arg2Resolution['true']: ValueRange = RangeAnalyser.resolutionNE(varRange = arg1Range)
-                    arg2Resolution['false']: ValueRange = RangeAnalyser.resolutionEQ(varRange = arg1Range)
+                    arg1Resolution['true']: ValueRange = RangeAnalyst.resolutionNE(varRange = arg2Range)
+                    arg1Resolution['false']: ValueRange = RangeAnalyst.resolutionEQ(varRange = arg2Range)
+                    arg2Resolution['true']: ValueRange = RangeAnalyst.resolutionNE(varRange = arg1Range)
+                    arg2Resolution['false']: ValueRange = RangeAnalyst.resolutionEQ(varRange = arg1Range)
                 resolutions[stmt] = {arg1: arg1Resolution, arg2: arg2Resolution}
         
         def doNarrowing() -> None:
@@ -301,7 +301,7 @@ try:
     from pygraphviz import AGraph
     
     
-    def drawControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawControlFlowGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         graph: AGraph = AGraph(directed = True, strict = True, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
@@ -337,7 +337,7 @@ try:
         return graph
     
     
-    def drawSimpleControlFlowGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawSimpleControlFlowGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         graph: AGraph = AGraph(directed = True, strict = False, overlap = False, compound = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
@@ -368,7 +368,7 @@ try:
         return graph
     
     
-    def drawConstraintGraph(self: RangeAnalyser, file: str = None) -> AGraph:
+    def drawConstraintGraph(self: RangeAnalyst, file: str = None) -> AGraph:
         graph: AGraph = AGraph(directed = True, strict = False, overlap = True, layout = 'dot')
         graph.node_attr['fontname'] = graph.edge_attr['fontname'] = 'Menlo'
         for func in self.functions.values():
@@ -452,10 +452,10 @@ try:
         return graph
     
     
-    RangeAnalyser.drawControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawControlFlowGraph
-    RangeAnalyser.drawSimpleControlFlowGraph: Callable[[RangeAnalyser, str], AGraph] = drawSimpleControlFlowGraph
-    RangeAnalyser.drawConstraintGraph: Callable[[RangeAnalyser, str], AGraph] = drawConstraintGraph
+    RangeAnalyst.drawControlFlowGraph: Callable[[RangeAnalyst, str], AGraph] = drawControlFlowGraph
+    RangeAnalyst.drawSimpleControlFlowGraph: Callable[[RangeAnalyst, str], AGraph] = drawSimpleControlFlowGraph
+    RangeAnalyst.drawConstraintGraph: Callable[[RangeAnalyst, str], AGraph] = drawConstraintGraph
 except ImportError:
-    RangeAnalyser.drawControlFlowGraph = None
-    RangeAnalyser.drawSimpleControlFlowGraph = None
-    RangeAnalyser.drawConstraintGraph = None
+    RangeAnalyst.drawControlFlowGraph = None
+    RangeAnalyst.drawSimpleControlFlowGraph = None
+    RangeAnalyst.drawConstraintGraph = None
