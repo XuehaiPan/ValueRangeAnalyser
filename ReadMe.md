@@ -78,7 +78,7 @@ Constraint Graph of `t7.ssa`:
 
 测试示例截图如下图所示：
 
-![Screen Shot 1](./Screen Shot 1.png)
+![Screen Shot 1](Screen Shot 1.png)
 
 ### 快速测试
 
@@ -136,5 +136,5 @@ if __name__ == '__main__':
 
 使用快速测试模式测试截图如下图所示：
 
-![Screen Shot 2](./Screen Shot 2.png)
+![Screen Shot 2](Screen Shot 2.png)
 
